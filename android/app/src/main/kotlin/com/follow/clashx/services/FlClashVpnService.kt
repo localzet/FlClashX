@@ -93,12 +93,15 @@ class FlClashXVpnService : VpnService(), BaseServiceInterface {
             // precedence over the app-level access control. Android's
             // VpnService.Builder only permits one of allowed/disallowed, so we
             // pick a single mode in this order: include (whitelist) > exclude
-            // (blacklist) > app-level accessControl.
+            // (blacklist) > app-level accessControl. When include is set and
+            // exclude is also present, we emulate mihomo/sing-tun semantics
+            // ("whitelist minus excludes") by subtracting exclude from include
+            // before adding to the allowed list.
             val include = options.includePackage.orEmpty()
             val exclude = options.excludePackage.orEmpty()
             when {
                 include.isNotEmpty() -> {
-                    (include + packageName).distinct().forEach { pkg ->
+                    ((include + packageName) - exclude.toSet()).distinct().forEach { pkg ->
                         try {
                             addAllowedApplication(pkg)
                         } catch (_: Exception) {
