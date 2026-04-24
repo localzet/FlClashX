@@ -108,7 +108,14 @@ jobs:
           cache-dependency-path: |
             core/go.sum
 
+      - name: Setup Flutter (ARM)
+        if: endsWith(matrix.os, '-arm')
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable --depth 1 "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+
       - name: Setup Flutter
+        if: ${{ !endsWith(matrix.os, '-arm') }}
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.41.7"
