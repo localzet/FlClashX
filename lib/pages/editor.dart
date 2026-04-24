@@ -1,19 +1,14 @@
 import 'package:flclashx/common/common.dart';
+import 'package:flclashx/common/yaml_highlight.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flclashx/state.dart';
 import 'package:flclashx/widgets/widgets.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_code_editor/flutter_code_editor.dart';
-import 'package:flutter_highlight/themes/atom-one-dark.dart';
-import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:highlight/languages/javascript.dart';
-import 'package:highlight/languages/yaml.dart';
 
 typedef TextEditingValueChangeBuilder = Widget Function(TextEditingValue value);
 
 class EditorPage extends ConsumerStatefulWidget {
-
   const EditorPage({
     super.key,
     required this.title,
@@ -22,10 +17,9 @@ class EditorPage extends ConsumerStatefulWidget {
     this.onSave,
     this.onPop,
     this.supportRemoteDownload = false,
-    this.languages = const [
-      Language.yaml,
-    ],
+    this.languages = const [Language.yaml],
   });
+
   final String title;
   final String content;
   final List<Language> languages;
@@ -40,28 +34,28 @@ class EditorPage extends ConsumerStatefulWidget {
 }
 
 class _EditorPageState extends ConsumerState<EditorPage> {
-  late CodeController _controller;
+  late TextEditingController _controller;
   late TextEditingController _titleController;
+  late ScrollController _scrollController;
   bool _showSearch = false;
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
-  List<int> _searchMatches = [];
-  int _currentMatch = -1;
 
   @override
   void initState() {
     super.initState();
-    final lang = widget.languages.contains(Language.yaml) ? yaml
-        : widget.languages.contains(Language.javaScript) ? javascript
-        : null;
-    _controller = CodeController(text: widget.content, language: lang);
+    _controller = widget.languages.contains(Language.yaml)
+        ? YamlHighlightController(text: widget.content)
+        : TextEditingController(text: widget.content);
     _titleController = TextEditingController(text: widget.title);
+    _scrollController = ScrollController();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _titleController.dispose();
+    _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
@@ -73,64 +67,21 @@ class _EditorPageState extends ConsumerState<EditorPage> {
         builder: (_, value, ___) => builder(value),
       );
 
-  void _handleSearch() {
+  Widget _wrapController(TextEditingValueChangeBuilder builder) =>
+      ValueListenableBuilder(
+        valueListenable: _controller,
+        builder: (_, value, ___) => builder(value),
+      );
+
+  void _toggleSearch() {
     setState(() {
       _showSearch = !_showSearch;
       if (_showSearch) {
         Future.microtask(() => _searchFocusNode.requestFocus());
-      } else {
-        _searchMatches = [];
-        _currentMatch = -1;
+      } else if (_controller is YamlHighlightController) {
+        (_controller as YamlHighlightController).setSearch('', [], -1);
       }
     });
-  }
-
-  void _updateSearch(String query) {
-    if (query.isEmpty) {
-      setState(() {
-        _searchMatches = [];
-        _currentMatch = -1;
-      });
-      return;
-    }
-    final text = _controller.fullText.toLowerCase();
-    final q = query.toLowerCase();
-    final matches = <int>[];
-    var start = 0;
-    while (true) {
-      final idx = text.indexOf(q, start);
-      if (idx == -1) break;
-      matches.add(idx);
-      start = idx + 1;
-    }
-    setState(() {
-      _searchMatches = matches;
-      _currentMatch = matches.isNotEmpty ? 0 : -1;
-    });
-    _goToMatch();
-  }
-
-  void _nextMatch() {
-    if (_searchMatches.isEmpty) return;
-    setState(() {
-      _currentMatch = (_currentMatch + 1) % _searchMatches.length;
-    });
-    _goToMatch();
-  }
-
-  void _prevMatch() {
-    if (_searchMatches.isEmpty) return;
-    setState(() {
-      _currentMatch = (_currentMatch - 1 + _searchMatches.length) % _searchMatches.length;
-    });
-    _goToMatch();
-  }
-
-  void _goToMatch() {
-    if (_currentMatch < 0 || _currentMatch >= _searchMatches.length) return;
-    final pos = _searchMatches[_currentMatch];
-    final len = _searchController.text.length;
-    _controller.selection = TextSelection(baseOffset: pos, extentOffset: pos + len);
   }
 
   Future<void> _handleImport() async {
@@ -141,8 +92,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     if (option == ImportOption.file) {
       final file = await picker.pickerFile();
       if (file == null) return;
-      final res = String.fromCharCodes(file.bytes?.toList() ?? []);
-      _controller.fullText = res;
+      _controller.text = String.fromCharCodes(file.bytes?.toList() ?? []);
       return;
     }
     final url = await globalState.showCommonDialog(
@@ -163,7 +113,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     );
     if (url == null) return;
     final res = await request.getTextResponseForUrl(url);
-    _controller.fullText = res.data;
+    _controller.text = res.data;
   }
 
   @override
@@ -172,10 +122,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       onPop: () async {
         if (widget.onPop == null) return true;
         final res = await widget.onPop!(
-          context,
-          _titleController.text,
-          _controller.fullText,
-        );
+            context, _titleController.text, _controller.text);
         if (res && context.mounted) return true;
         return false;
       },
@@ -194,19 +141,16 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           ),
           actions: genActions([
             if (widget.onSave != null)
-              _wrapTitleController(
-                (_) => IconButton(
-                  onPressed: _controller.fullText != widget.content ||
-                          _titleController.text != widget.title
-                      ? () {
-                          widget.onSave!(
-                            context,
-                            _titleController.text,
-                            _controller.fullText,
-                          );
-                        }
-                      : null,
-                  icon: const Icon(Icons.save_sharp),
+              _wrapController(
+                (_) => _wrapTitleController(
+                  (_) => IconButton(
+                    onPressed: _controller.text != widget.content ||
+                            _titleController.text != widget.title
+                        ? () => widget.onSave!(
+                            context, _titleController.text, _controller.text)
+                        : null,
+                    icon: const Icon(Icons.save_sharp),
+                  ),
                 ),
               ),
             if (widget.supportRemoteDownload)
@@ -215,7 +159,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 icon: const Icon(Icons.arrow_downward),
               ),
             IconButton(
-              onPressed: _handleSearch,
+              onPressed: _toggleSearch,
               icon: const Icon(Icons.search),
             ),
           ]),
@@ -224,35 +168,28 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           children: [
             if (_showSearch)
               _SearchBar(
-                controller: _searchController,
+                searchController: _searchController,
                 focusNode: _searchFocusNode,
-                matchCount: _searchMatches.length,
-                currentMatch: _currentMatch,
-                onChanged: _updateSearch,
-                onNext: _nextMatch,
-                onPrev: _prevMatch,
-                onClose: _handleSearch,
+                editorController: _controller,
+                scrollController: _scrollController,
+                onClose: _toggleSearch,
               ),
             Expanded(
-              child: CodeTheme(
-                data: CodeThemeData(
-                  styles: Theme.of(context).brightness == Brightness.dark
-                      ? atomOneDarkTheme
-                      : atomOneLightTheme,
-                ),
-                child: CodeField(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                child: TextField(
                   controller: _controller,
-                  wrap: true,
-                  expands: true,
                   maxLines: null,
-                  textStyle: TextStyle(
+                  style: TextStyle(
                     fontSize: context.textTheme.bodyLarge?.fontSize?.ap,
                     fontFamily: FontFamily.jetBrainsMono.value,
+                    height: 1.5,
                   ),
-                  gutterStyle: const GutterStyle(
-                    showLineNumbers: true,
-                    showFoldingHandles: true,
-                    showErrors: false,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ),
               ),
@@ -264,52 +201,121 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   }
 }
 
-class _SearchBar extends StatelessWidget {
+class _SearchBar extends StatefulWidget {
   const _SearchBar({
-    required this.controller,
+    required this.searchController,
     required this.focusNode,
-    required this.matchCount,
-    required this.currentMatch,
-    required this.onChanged,
-    required this.onNext,
-    required this.onPrev,
+    required this.editorController,
+    required this.scrollController,
     required this.onClose,
   });
 
-  final TextEditingController controller;
+  final TextEditingController searchController;
   final FocusNode focusNode;
-  final int matchCount;
-  final int currentMatch;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onNext;
-  final VoidCallback onPrev;
+  final TextEditingController editorController;
+  final ScrollController scrollController;
   final VoidCallback onClose;
 
   @override
+  State<_SearchBar> createState() => _SearchBarState();
+}
+
+class _SearchBarState extends State<_SearchBar> {
+  List<int> _matches = [];
+  int _current = -1;
+
+  void _notifyHighlight() {
+    final ctrl = widget.editorController;
+    if (ctrl is YamlHighlightController) {
+      ctrl.setSearch(widget.searchController.text, _matches, _current);
+    }
+  }
+
+  void _search(String query) {
+    if (query.isEmpty) {
+      setState(() { _matches = []; _current = -1; });
+      _notifyHighlight();
+      return;
+    }
+    final text = widget.editorController.text.toLowerCase();
+    final q = query.toLowerCase();
+    final matches = <int>[];
+    var start = 0;
+    while (true) {
+      final idx = text.indexOf(q, start);
+      if (idx == -1) break;
+      matches.add(idx);
+      start = idx + 1;
+    }
+    setState(() {
+      _matches = matches;
+      _current = matches.isNotEmpty ? 0 : -1;
+    });
+    _notifyHighlight();
+    _goToMatch();
+  }
+
+  void _next() {
+    if (_matches.isEmpty) return;
+    setState(() => _current = (_current + 1) % _matches.length);
+    _notifyHighlight();
+    _goToMatch();
+  }
+
+  void _prev() {
+    if (_matches.isEmpty) return;
+    setState(() =>
+        _current = (_current - 1 + _matches.length) % _matches.length);
+    _notifyHighlight();
+    _goToMatch();
+  }
+
+  void _goToMatch() {
+    if (_current < 0 || _current >= _matches.length) return;
+    final pos = _matches[_current];
+    final len = widget.searchController.text.length;
+    widget.editorController.selection =
+        TextSelection(baseOffset: pos, extentOffset: pos + len);
+
+    if (!widget.scrollController.hasClients) return;
+    final text = widget.editorController.text;
+    final linesBefore = '\n'.allMatches(text.substring(0, pos)).length;
+    final lineHeight = (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 14) * 1.5;
+    final target = linesBefore * lineHeight;
+    final maxScroll = widget.scrollController.position.maxScrollExtent;
+    final viewportHeight = widget.scrollController.position.viewportDimension;
+    widget.scrollController.animateTo(
+      (target - viewportHeight / 3).clamp(0.0, maxScroll),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final result = matchCount > 0
-        ? '${currentMatch + 1}/$matchCount'
+    final result = _matches.isNotEmpty
+        ? '${_current + 1}/${_matches.length}'
         : appLocalizations.none;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Theme.of(context).colorScheme.surface,
       child: Row(
         children: [
           Expanded(
             child: TextField(
-              controller: controller,
-              focusNode: focusNode,
+              controller: widget.searchController,
+              focusNode: widget.focusNode,
               maxLines: 1,
               decoration: InputDecoration(
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                border: const OutlineInputBorder(),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 hintText: appLocalizations.search,
               ),
               style: Theme.of(context).textTheme.bodyMedium,
-              onChanged: onChanged,
-              onSubmitted: (_) => onNext(),
+              onChanged: _search,
+              onSubmitted: (_) => _next(),
             ),
           ),
           const SizedBox(width: 8),
@@ -317,17 +323,17 @@ class _SearchBar extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.arrow_upward, size: 16),
             visualDensity: VisualDensity.compact,
-            onPressed: matchCount > 0 ? onPrev : null,
+            onPressed: _matches.isNotEmpty ? _prev : null,
           ),
           IconButton(
             icon: const Icon(Icons.arrow_downward, size: 16),
             visualDensity: VisualDensity.compact,
-            onPressed: matchCount > 0 ? onNext : null,
+            onPressed: _matches.isNotEmpty ? _next : null,
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 16),
             visualDensity: VisualDensity.compact,
-            onPressed: onClose,
+            onPressed: widget.onClose,
           ),
         ],
       ),
@@ -337,81 +343,59 @@ class _SearchBar extends StatelessWidget {
 
 class _NoInputBorder extends InputBorder {
   const _NoInputBorder() : super(borderSide: BorderSide.none);
-
   @override
   _NoInputBorder copyWith({BorderSide? borderSide}) => const _NoInputBorder();
-
   @override
   bool get isOutline => false;
-
   @override
   EdgeInsetsGeometry get dimensions => EdgeInsets.zero;
-
   @override
   _NoInputBorder scale(double t) => const _NoInputBorder();
-
   @override
   Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
       Path()..addRect(rect);
-
   @override
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
       Path()..addRect(rect);
-
   @override
   void paintInterior(Canvas canvas, Rect rect, Paint paint,
       {TextDirection? textDirection}) {
     canvas.drawRect(rect, paint);
   }
-
   @override
   bool get preferPaintInterior => true;
-
   @override
-  void paint(
-    Canvas canvas,
-    Rect rect, {
-    double? gapStart,
-    double gapExtent = 0.0,
-    double gapPercentage = 0.0,
-    TextDirection? textDirection,
-  }) {}
+  void paint(Canvas canvas, Rect rect,
+      {double? gapStart,
+      double gapExtent = 0.0,
+      double gapPercentage = 0.0,
+      TextDirection? textDirection}) {}
 }
 
 class _ImportOptionsDialog extends StatefulWidget {
   const _ImportOptionsDialog();
-
   @override
   State<_ImportOptionsDialog> createState() => _ImportOptionsDialogState();
 }
 
 class _ImportOptionsDialogState extends State<_ImportOptionsDialog> {
-  void _handleOnTab(ImportOption value) {
-    Navigator.of(context).pop(value);
-  }
+  void _handleOnTab(ImportOption value) => Navigator.of(context).pop(value);
 
   @override
   Widget build(BuildContext context) => CommonDialog(
-      title: appLocalizations.import,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 16,
-      ),
-      child: Wrap(
-        children: [
-          ListItem(
-            onTap: () {
-              _handleOnTab(ImportOption.url);
-            },
-            title: Text(appLocalizations.importUrl),
-          ),
-          ListItem(
-            onTap: () {
-              _handleOnTab(ImportOption.file);
-            },
-            title: Text(appLocalizations.importFile),
-          )
-        ],
-      ),
-    );
+        title: appLocalizations.import,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+        child: Wrap(
+          children: [
+            ListItem(
+              onTap: () => _handleOnTab(ImportOption.url),
+              title: Text(appLocalizations.importUrl),
+            ),
+            ListItem(
+              onTap: () => _handleOnTab(ImportOption.file),
+              title: Text(appLocalizations.importFile),
+            ),
+          ],
+        ),
+      );
 }

@@ -5,6 +5,7 @@ import 'package:flclashx/clash/service.dart';
 import 'package:flclashx/common/common.dart';
 import 'package:flclashx/core_version.dart';
 import 'package:flclashx/common/yaml_dump.dart';
+import 'package:flclashx/common/yaml_highlight.dart';
 import 'package:flclashx/l10n/l10n.dart';
 import 'package:flclashx/models/models.dart';
 import 'package:flclashx/providers/providers.dart';
@@ -322,42 +323,42 @@ class _RuntimeConfigBody extends StatefulWidget {
 }
 
 class _RuntimeConfigBodyState extends State<_RuntimeConfigBody> {
-  final _controller = TextEditingController();
+  late final YamlHighlightController _yamlController;
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   String _query = '';
 
   @override
+  void initState() {
+    super.initState();
+    _yamlController = YamlHighlightController(text: widget.text);
+  }
+
+  @override
   void dispose() {
-    _controller.dispose();
+    _yamlController.dispose();
+    _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  List<TextSpan> _buildSpans(String text, String query) {
+  void _onSearch(String query) {
+    setState(() => _query = query);
     if (query.isEmpty) {
-      return [TextSpan(text: text)];
+      _yamlController.setSearch('', [], -1);
+      return;
     }
-    final lower = text.toLowerCase();
-    final qLower = query.toLowerCase();
-    final spans = <TextSpan>[];
+    final text = widget.text.toLowerCase();
+    final q = query.toLowerCase();
+    final matches = <int>[];
     var start = 0;
     while (true) {
-      final idx = lower.indexOf(qLower, start);
-      if (idx == -1) {
-        spans.add(TextSpan(text: text.substring(start)));
-        break;
-      }
-      if (idx > start) {
-        spans.add(TextSpan(text: text.substring(start, idx)));
-      }
-      spans.add(TextSpan(
-        text: text.substring(idx, idx + query.length),
-        style: TextStyle(
-          backgroundColor: Colors.yellow.withValues(alpha: 0.6),
-          fontWeight: FontWeight.bold,
-        ),
-      ));
-      start = idx + query.length;
+      final idx = text.indexOf(q, start);
+      if (idx == -1) break;
+      matches.add(idx);
+      start = idx + 1;
     }
-    return spans;
+    _yamlController.setSearch(query, matches, matches.isNotEmpty ? 0 : -1);
   }
 
   @override
@@ -367,7 +368,7 @@ class _RuntimeConfigBodyState extends State<_RuntimeConfigBody> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: TextField(
-            controller: _controller,
+            controller: _searchController,
             decoration: InputDecoration(
               hintText: AppLocalizations.of(context).search,
               prefixIcon: const Icon(Icons.search, size: 20),
@@ -380,25 +381,32 @@ class _RuntimeConfigBodyState extends State<_RuntimeConfigBody> {
                   ? IconButton(
                       icon: const Icon(Icons.clear, size: 18),
                       onPressed: () {
-                        _controller.clear();
-                        setState(() => _query = '');
+                        _searchController.clear();
+                        _onSearch('');
                       },
                     )
                   : null,
             ),
-            onChanged: (v) => setState(() => _query = v),
+            onChanged: _onSearch,
           ),
         ),
         Expanded(
           child: SingleChildScrollView(
+            controller: _scrollController,
             padding: const EdgeInsets.all(16),
-            child: SelectableText.rich(
-              TextSpan(
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
-                children: _buildSpans(widget.text, _query),
+            child: TextField(
+              controller: _yamlController,
+              readOnly: true,
+              maxLines: null,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.5,
+              ),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
@@ -490,10 +498,15 @@ class _CoreUpdateItemState extends State<_CoreUpdateItem> {
     return 'FlClashCore-$platform-$arch$ext';
   }
 
+  bool _initialCheckDone = false;
+
   @override
-  void initState() {
-    super.initState();
-    _check();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialCheckDone) {
+      _initialCheckDone = true;
+      _check();
+    }
   }
 
   Future<void> _check() async {
