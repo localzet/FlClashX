@@ -579,11 +579,8 @@ class BuildCommand extends Command {
       ],
     );
 
-    final buildDir = join(current, "build", "windows", "x64", "runner", "Release");
-    if (arch == Arch.arm64) {
-      // arm64 build output may be in a different path
-      // fallback handled below
-    }
+    final winArch = arch == Arch.arm64 ? "arm64" : "x64";
+    final buildDir = join(current, "build", "windows", winArch, "runner", "Release");
 
     final version = Build.readVersion();
     final distDir = Directory(Build.distPath);
