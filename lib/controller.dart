@@ -103,22 +103,41 @@ class AppController {
       }
     }
 
+    commonPrint.log('[initForegroundCache] profileName="$profileName" serviceName="$serviceName" selectedMap=${profile.selectedMap}');
     vpn?.updateProfileInfo(
       profileName: profileName,
       serviceName: serviceName,
     );
 
-    // Get current server name from selectedMap
-    String? groupName = profile.providerHeaders['flclashx-serverinfo'];
-    if (groupName != null && groupName.isNotEmpty) {
+    final groups = _ref.read(groupsProvider);
+    String serverName = "";
+    final serverInfoHeader = profile.providerHeaders['flclashx-serverinfo'];
+    if (serverInfoHeader != null && serverInfoHeader.isNotEmpty) {
       String decodedGroupName;
       try {
-        final normalized = base64.normalize(groupName);
+        final normalized = base64.normalize(serverInfoHeader);
         decodedGroupName = utf8.decode(base64.decode(normalized)).trim();
       } catch (_) {
-        decodedGroupName = groupName.trim();
+        decodedGroupName = serverInfoHeader.trim();
       }
-      final serverName = profile.selectedMap[decodedGroupName] ?? "";
+      final group = groups.getGroup(decodedGroupName);
+      if (group != null) {
+        serverName = group.realNow;
+      }
+      if (serverName.isEmpty) {
+        serverName = profile.selectedMap[decodedGroupName] ?? "";
+      }
+    }
+    if (serverName.isEmpty) {
+      for (final g in groups) {
+        final now = g.realNow;
+        if (now.isNotEmpty && now != 'DIRECT' && now != 'REJECT') {
+          serverName = now;
+          break;
+        }
+      }
+    }
+    if (serverName.isNotEmpty) {
       vpn?.updateServerName(serverName);
     }
   }
@@ -480,7 +499,7 @@ class AppController {
 
   Future<Map<String, String>?> _getRemoteFileMetadata(String url) async {
     try {
-      final response = await http.head(Uri.parse(url)).timeout(
+      final response = await http.head(Uri.parse(url.normalizeUrlCredentials)).timeout(
             const Duration(seconds: 10),
           );
 
@@ -827,6 +846,7 @@ class AppController {
     await setupClashConfig();
     await updateGroups();
     await updateProviders();
+    initForegroundCache();
   }
 
   Future applyProfile({bool silence = false}) async {

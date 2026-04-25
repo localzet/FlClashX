@@ -6,20 +6,12 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-/**
- * Bridges the `tile` method channel between the app-process Flutter engine and
- * Kotlin. Responsible for:
- *   - forwarding start/stop/changeMode calls from Kotlin into Dart,
- *   - routing mode/globalMode updates from Dart back to [GlobalState]'s
- *     LiveData surface (consumed by widgets and the quick-settings tile),
- *   - replaying the pending action recorded when a widget/tile toggle fired
- *     while no Flutter engine was alive.
- */
 class TilePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     enum class PendingAction { START, STOP }
 
     private lateinit var channel: MethodChannel
+    @Volatile private var attached = false
 
     companion object {
         private const val TAG = "TilePlugin"
@@ -48,32 +40,27 @@ class TilePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "tile")
         channel.setMethodCallHandler(this)
+        attached = true
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            runCatching { channel.invokeMethod("detached", null) }
-        }
+        attached = false
         channel.setMethodCallHandler(null)
     }
 
-    fun handleStart() {
+    private fun safeInvoke(method: String, argument: Any? = null) {
+        if (!attached) return
         android.os.Handler(android.os.Looper.getMainLooper()).post {
-            channel.invokeMethod("start", null)
+            if (!attached) return@post
+            runCatching { channel.invokeMethod(method, argument) }
         }
     }
 
-    fun handleStop() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            channel.invokeMethod("stop", null)
-        }
-    }
+    fun handleStart() = safeInvoke("start")
 
-    fun handleChangeMode(mode: String) {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            channel.invokeMethod("changeMode", mode)
-        }
-    }
+    fun handleStop() = safeInvoke("stop")
+
+    fun handleChangeMode(mode: String) = safeInvoke("changeMode", mode)
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {

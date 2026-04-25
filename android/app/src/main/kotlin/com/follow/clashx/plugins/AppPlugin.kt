@@ -123,21 +123,25 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
         channel.setMethodCallHandler(this)
     }
 
-    private fun initShortcuts(label: String) {
-        val shortcut = ShortcutInfoCompat.Builder(FlClashXApplication.getAppContext(), "toggle")
-            .setShortLabel(label)
-            .setIcon(
-                IconCompat.createWithResource(
-                    FlClashXApplication.getAppContext(),
-                    R.mipmap.ic_launcher_round
-                )
-            )
-            .setIntent(FlClashXApplication.getAppContext().getActionIntent("CHANGE"))
+    private fun initShortcuts(toggle: String, start: String, stop: String) {
+        val ctx = FlClashXApplication.getAppContext()
+        val icon = IconCompat.createWithResource(ctx, R.mipmap.ic_launcher_round)
+        val toggleShortcut = ShortcutInfoCompat.Builder(ctx, "toggle")
+            .setShortLabel(toggle)
+            .setIcon(icon)
+            .setIntent(ctx.getActionIntent("CHANGE"))
             .build()
-        ShortcutManagerCompat.setDynamicShortcuts(
-            FlClashXApplication.getAppContext(),
-            listOf(shortcut)
-        )
+        val startShortcut = ShortcutInfoCompat.Builder(ctx, "start")
+            .setShortLabel(start)
+            .setIcon(icon)
+            .setIntent(ctx.getActionIntent("START"))
+            .build()
+        val stopShortcut = ShortcutInfoCompat.Builder(ctx, "stop")
+            .setShortLabel(stop)
+            .setIcon(icon)
+            .setIntent(ctx.getActionIntent("STOP"))
+            .build()
+        ShortcutManagerCompat.setDynamicShortcuts(ctx, listOf(toggleShortcut, startShortcut, stopShortcut))
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -165,7 +169,12 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
             }
 
             "initShortcuts" -> {
-                initShortcuts(call.arguments as String)
+                val args = call.arguments as? Map<*, *> ?: emptyMap<String, String>()
+                initShortcuts(
+                    toggle = args["toggle"] as? String ?: "Toggle",
+                    start = args["start"] as? String ?: "Start",
+                    stop = args["stop"] as? String ?: "Stop",
+                )
                 result.success(true)
             }
 
@@ -330,8 +339,6 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                 activity.startActivityForResult(intent, VPN_PERMISSION_REQUEST_CODE)
                 return
             }
-            // Activity unavailable — permission dialog can't be shown, proceed anyway
-            // (will fail at builder.establish() if permission not granted)
         }
         vpnCallBack?.invoke()
     }

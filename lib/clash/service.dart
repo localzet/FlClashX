@@ -27,6 +27,9 @@ class ClashService extends ClashHandlerInterface {
   bool isStarting = false;
 
   Process? process;
+  StreamSubscription? _socketSubscription;
+  StreamSubscription? _stdoutSubscription;
+  StreamSubscription? _stderrSubscription;
 
   Future<void> _initServer() async {
     runZonedGuarded(() async {
@@ -49,7 +52,7 @@ class ClashService extends ClashHandlerInterface {
       await for (final socket in server) {
         await _destroySocket();
         socketCompleter.complete(socket);
-        socket
+        _socketSubscription = socket
             .transform(uint8ListToListIntConverter)
             .transform(utf8.decoder)
             .transform(const LineSplitter())
@@ -67,7 +70,6 @@ class ClashService extends ClashHandlerInterface {
       commonPrint.log(error.toString());
       if (error is SocketException) {
         globalState.showNotifier(error.toString());
-        // globalState.appController.restartCore();
       }
     });
   }
@@ -93,13 +95,11 @@ class ClashService extends ClashHandlerInterface {
         return;
       }
     }
-    
+
     final homeDirPath = await appPath.homeDirPath;
     final environment = Map<String, String>.from(Platform.environment);
-    // Set SAFE_PATHS to prevent "path is not subpath of home directory" errors
-    // This ensures the core can access provider files before SetHomeDir is called
     environment['SAFE_PATHS'] = homeDirPath;
-    
+
     process = await Process.start(
       appPath.corePath,
       [
@@ -107,8 +107,8 @@ class ClashService extends ClashHandlerInterface {
       ],
       environment: environment,
     );
-    process?.stdout.listen((_) {});
-    process?.stderr.listen((e) {
+    _stdoutSubscription = process?.stdout.listen((_) {});
+    _stderrSubscription = process?.stderr.listen((e) {
       final error = utf8.decode(e);
       if (error.isNotEmpty) {
         commonPrint.log(error);
@@ -141,6 +141,9 @@ class ClashService extends ClashHandlerInterface {
   }
 
   Future<void> _destroySocket() async {
+    await _socketSubscription?.cancel();
+    _socketSubscription = null;
+    _flushPendingCompleters();
     if (socketCompleter.isCompleted) {
       final lastSocket = await socketCompleter.future;
       await lastSocket.close();
@@ -148,11 +151,24 @@ class ClashService extends ClashHandlerInterface {
     }
   }
 
+  void _flushPendingCompleters() {
+    for (final entry in callbackCompleterMap.entries.toList()) {
+      if (!entry.value.isCompleted) {
+        entry.value.completeError(StateError('socket disconnected'));
+      }
+    }
+    callbackCompleterMap.clear();
+  }
+
   @override
   Future<bool> shutdown() async {
     if (Platform.isWindows) {
       await request.stopCoreByHelper();
     }
+    await _stdoutSubscription?.cancel();
+    _stdoutSubscription = null;
+    await _stderrSubscription?.cancel();
+    _stderrSubscription = null;
     await _destroySocket();
     process?.kill();
     process = null;

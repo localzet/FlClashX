@@ -19,10 +19,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Stable wrapper around [Context.bindService] that exposes the resulting [IBinder] as a flow
- * with retry semantics. Collection ends when the binding is released via [unbind].
- */
 fun Context.bindServiceFlow(
     intent: Intent,
     flags: Int = Context.BIND_AUTO_CREATE,
@@ -61,18 +57,6 @@ fun Context.bindServiceFlow(
     retry
 }
 
-/**
- * Generic service delegate that coordinates binding, proxy resolution and timeouts for a single
- * AIDL endpoint. Usage:
- *
- * ```
- * val delegate = ServiceDelegate(RemoteService::class.intent, ::onDisconnect) {
- *     IRemoteInterface.Stub.asInterface(it)
- * }
- * delegate.bind()
- * delegate.useService { proxy -> proxy.startService(opts) }
- * ```
- */
 class ServiceDelegate<T : Any>(
     private val intent: Intent,
     private val onDisconnected: (String) -> Unit = {},

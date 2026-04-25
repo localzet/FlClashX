@@ -1,21 +1,17 @@
 package com.follow.clashx.service
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.RemoteException
 import android.os.SystemClock
-import androidx.core.app.NotificationCompat
 import com.follow.clashx.common.GlobalState
 import com.follow.clashx.common.ServiceDelegate
 import com.follow.clashx.common.chunkedForAidl
 import com.follow.clashx.common.intent
-import com.follow.clashx.common.startForeground
 import com.follow.clashx.core.Core
 import com.follow.clashx.core.InvokeInterface
 import com.follow.clashx.service.models.NotificationParams
@@ -26,17 +22,9 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-/**
- * AIDL endpoint living in the `:remote` process. Stable across switches between
- * [FlVpnService] and [CommonService] so the app process keeps a single proxy.
- */
 class RemoteService : Service() {
 
     private val eventListener = AtomicReference<com.follow.clashx.service.IEventInterface?>(null)
-
-    // --------------------------------------------------------------------
-    // Chunked AIDL dispatch helpers
-    // --------------------------------------------------------------------
 
     private suspend fun dispatchChunked(
         data: String,
@@ -115,6 +103,7 @@ class RemoteService : Service() {
 
         override fun updateNotificationParams(params: NotificationParams) {
             State.notificationParamsFlow.value = params
+            com.follow.clashx.common.SavedParams.saveNotificationTitle(params.title)
         }
 
         override fun startService(options: VpnOptions, runTime: Long, result: IResultInterface) {
@@ -147,7 +136,6 @@ class RemoteService : Service() {
                     State.delegate = delegate
                     delegate.bind()
 
-                    // Ensure foreground via startService (avoids BackgroundServiceStartNotAllowed on modern APIs).
                     androidx.core.content.ContextCompat.startForegroundService(
                         this@RemoteService,
                         serviceIntent,
@@ -248,14 +236,11 @@ class RemoteService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        runCatching { promoteToForeground() }
-            .onFailure { GlobalState.log("RemoteService: promoteToForeground failed: ${it.message}") }
         runCatching { Core.getRunTime() }
             .onFailure { GlobalState.log("RemoteService: native library load failed: ${it.message}") }
+        deleteStaleChannels()
         GlobalState.log("RemoteService created")
     }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         eventListener.set(null)
@@ -263,25 +248,9 @@ class RemoteService : Service() {
         super.onDestroy()
     }
 
-    private fun promoteToForeground() {
-        val channelId = GlobalState.REMOTE_NOTIFICATION_CHANNEL
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (mgr.getNotificationChannel(channelId) == null) {
-                mgr.createNotificationChannel(
-                    NotificationChannel(channelId, "FlClashX Core", NotificationManager.IMPORTANCE_MIN)
-                )
-            }
-        }
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("FlClashX")
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .build()
-        val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else 0
-        startForeground(GlobalState.REMOTE_NOTIFICATION_ID, notification, fgType)
+    private fun deleteStaleChannels() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        runCatching { mgr.deleteNotificationChannel("FlClashX_Core") }
     }
 }

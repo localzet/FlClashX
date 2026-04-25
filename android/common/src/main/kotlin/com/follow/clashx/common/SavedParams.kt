@@ -4,18 +4,14 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
-/**
- * File-based persistence for Always-on VPN cold-start and boot-restore.
- * Uses [GlobalState.application.filesDir] which is shared across all
- * processes of the same app, avoiding SharedPreferences cross-process issues.
- * Writes are atomic (write-to-temp + rename) to guard against cross-process races.
- */
 object SavedParams {
     private const val PARAMS_FILE = "flclashx_always_on.json"
     private const val ACTIVE_FILE = "flclashx_vpn_active"
+    private const val NOTIF_TITLE_FILE = "flclashx_notif_title"
 
     private val paramsFile by lazy { File(GlobalState.application.filesDir, PARAMS_FILE) }
     private val activeFile by lazy { File(GlobalState.application.filesDir, ACTIVE_FILE) }
+    private val notifTitleFile by lazy { File(GlobalState.application.filesDir, NOTIF_TITLE_FILE) }
 
     data class QuickStartParams(val init: String, val setup: String, val state: String)
 
@@ -52,6 +48,14 @@ object SavedParams {
     }
 
     fun isVpnActive(): Boolean = activeFile.exists()
+
+    fun saveNotificationTitle(title: String) {
+        runCatching { writeAtomic(notifTitleFile, title) }
+            .onFailure { GlobalState.log("saveNotificationTitle error: ${it.message}") }
+    }
+
+    fun loadNotificationTitle(): String =
+        runCatching { notifTitleFile.readText().trim() }.getOrDefault("FlClashX")
 
     private fun writeAtomic(target: File, content: String) {
         val tmp = File(target.parentFile, "${target.name}.tmp")

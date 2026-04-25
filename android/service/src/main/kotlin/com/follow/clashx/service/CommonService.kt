@@ -8,12 +8,7 @@ import com.follow.clashx.common.GlobalState
 import com.follow.clashx.service.models.VpnOptions
 import com.follow.clashx.service.modules.NetworkObserveModule
 import com.follow.clashx.service.modules.NotificationModule
-import com.follow.clashx.service.modules.SuspendModule
 
-/**
- * Foreground service that hosts the proxy core without setting up a VPN tunnel
- * (system-proxy / manual-import mode). Used when [VpnOptions.enable] == false.
- */
 class CommonService : Service(), IBaseService {
 
     inner class LocalBinder : Binder() {
@@ -25,7 +20,6 @@ class CommonService : Service(), IBaseService {
     private val loader = moduleLoader {
         install(::NetworkObserveModule)
         install(::NotificationModule)
-        install(::SuspendModule)
     }
 
     override fun onCreate() {
@@ -63,7 +57,6 @@ class CommonService : Service(), IBaseService {
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Foreground is promoted in NotificationModule.install().
         return START_STICKY
     }
 

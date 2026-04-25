@@ -15,12 +15,10 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlin.reflect.KClass
 
-// --- Component -> Intent helpers ------------------------------------------------
 
 val KClass<*>.intent: Intent
     get() = Intent().setClassName(Components.PACKAGE_NAME, java.name)
 
-// --- Broadcast helpers ----------------------------------------------------------
 
 fun Context.registerReceiverCompat(
     receiver: BroadcastReceiver,
@@ -53,7 +51,6 @@ fun Context.sendInternalBroadcast(action: String) {
     )
 }
 
-// --- Service foreground helper --------------------------------------------------
 
 fun Service.startForeground(id: Int, notification: Notification, foregroundServiceType: Int = 0) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && foregroundServiceType != 0) {
@@ -63,7 +60,6 @@ fun Service.startForeground(id: Int, notification: Notification, foregroundServi
     }
 }
 
-// --- Byte / string helpers ------------------------------------------------------
 
 private const val SMALL_PAYLOAD = 100 * 1024
 private const val CHUNK_64K = 64 * 1024
@@ -114,7 +110,6 @@ fun formatBytes(bytes: Long): String {
     return String.format("%.2f %s", value, units[i])
 }
 
-// --- Time helpers ---------------------------------------------------------------
 
 fun tickerFlow(intervalMillis: Long, initialDelay: Long = 0L): Flow<Unit> = flow {
     if (initialDelay > 0) kotlinx.coroutines.delay(initialDelay)

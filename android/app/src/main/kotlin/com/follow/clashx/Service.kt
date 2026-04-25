@@ -1,6 +1,5 @@
 package com.follow.clashx
 
-import androidx.core.content.ContextCompat
 import com.follow.clashx.common.ServiceDelegate
 import com.follow.clashx.common.formatString
 import com.follow.clashx.common.intent
@@ -17,11 +16,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * App-process façade over [IRemoteInterface] AIDL. All calls go through a single
- * [ServiceDelegate] so the UI process keeps exactly one bound proxy regardless of
- * which inner service (VPN vs common) is active in the `:remote` process.
- */
 object Service {
     private val delegate by lazy {
         ServiceDelegate<IRemoteInterface>(
@@ -38,24 +32,12 @@ object Service {
         onServiceDisconnected?.invoke(message)
     }
 
-    private var foregroundStarted = false
-
     fun bind() {
-        if (!foregroundStarted) {
-            foregroundStarted = true
-            val ctx = com.follow.clashx.common.GlobalState.application
-            runCatching { ContextCompat.startForegroundService(ctx, RemoteService::class.intent) }
-        }
         delegate.bind()
     }
 
     fun unbind() {
         delegate.unbind()
-        if (foregroundStarted) {
-            foregroundStarted = false
-            val ctx = com.follow.clashx.common.GlobalState.application
-            runCatching { ctx.stopService(RemoteService::class.intent) }
-        }
     }
 
     suspend fun invokeAction(data: String, cb: ((String) -> Unit)?): Result<Unit> {
@@ -148,8 +130,6 @@ object Service {
         delegate.useService(timeoutMillis = 15_000L) { proxy ->
             awaitResult { cb -> proxy.stopService(cb) }
         }.getOrNull() ?: 0L
-
-    // --- Fork-specific straight-through AIDL methods ---------------------------
 
     suspend fun setState(state: String): Result<Unit> =
         delegate.useService { it.setState(state) }

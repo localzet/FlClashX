@@ -13,7 +13,6 @@ data class AccessControlProps(
 
 @Parcelize
 data class VpnOptions(
-    /** If false, only the proxy core runs (CommonService). If true, a VPN tunnel is set up. */
     val enable: Boolean = true,
     val port: Int = 7890,
     val socksPort: Int = 7891,
@@ -30,8 +29,6 @@ data class VpnOptions(
     val includePackage: List<String>? = null,
     val excludePackage: List<String>? = null,
 ) : Parcelable
-
-// --- CIDR utilities ------------------------------------------------------------
 
 fun String.toCIDR(): Pair<String, Int>? {
     val parts = split("/", limit = 2)

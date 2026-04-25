@@ -51,11 +51,14 @@ class Vpn {
       final title = _cachedServerName.isNotEmpty
           ? '$_cachedProfileName / $_cachedServerName'
           : _cachedProfileName;
+      commonPrint.log('[Vpn] pushNotification: title="$title" server="$_cachedServiceName" clashLib=${clashLib != null}');
       await clashLib?.updateNotificationParams(
         title: title,
         server: _cachedServiceName,
       );
-    } catch (_) {}
+    } catch (e) {
+      commonPrint.log('[Vpn] pushNotification FAILED: $e');
+    }
   }
 
   /// Restore-pending: Kotlin side needs a matching method on the service

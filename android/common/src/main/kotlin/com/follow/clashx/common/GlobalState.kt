@@ -13,8 +13,6 @@ object GlobalState {
 
     const val NOTIFICATION_CHANNEL = "FlClashX"
     const val NOTIFICATION_ID = 1
-    const val REMOTE_NOTIFICATION_CHANNEL = "FlClashX_Core"
-    const val REMOTE_NOTIFICATION_ID = 3
 
     lateinit var application: Application
         private set
@@ -32,6 +30,5 @@ object GlobalState {
     }
 
     fun setCrashlytics(@Suppress("UNUSED_PARAMETER") enable: Boolean) {
-        // no-op hook — plug real implementation if/when crash reporting is integrated
     }
 }

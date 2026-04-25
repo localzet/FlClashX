@@ -29,12 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-/**
- * Bridge between Flutter's MethodChannel and the AIDL [IRemoteInterface] exposed
- * by the `:remote` process via [Service]. Replaces the previous dual-engine /
- * FFI-based flow: all core interactions now go over the channel
- * `com.follow.clashx/service` and are forwarded as AIDL calls.
- */
 class ServicePlugin :
     FlutterPlugin,
     MethodChannel.MethodCallHandler,
@@ -43,13 +37,16 @@ class ServicePlugin :
     private lateinit var channel: MethodChannel
     private val eventSemaphore = Semaphore(10)
     private val gson = Gson()
+    @Volatile private var attached = false
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "${Components.PACKAGE_NAME}/service")
         channel.setMethodCallHandler(this)
+        attached = true
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        attached = false
         channel.setMethodCallHandler(null)
     }
 
@@ -95,8 +92,6 @@ class ServicePlugin :
         }
     }
 
-    // --- lifecycle ---------------------------------------------------------
-
     private fun handleInit(result: MethodChannel.Result) {
         Service.bind()
         Service.onServiceDisconnected = ::onServiceDisconnected
@@ -121,8 +116,6 @@ class ServicePlugin :
         GlobalState.runStateFlow.tryEmit(RunState.STOP)
         invokeOnMain("crash", message)
     }
-
-    // --- one-shot passthroughs ---------------------------------------------
 
     private fun handleInvokeAction(call: MethodCall, result: MethodChannel.Result) {
         val data = call.arguments<String>() ?: run { result.successOnMain(""); return }
@@ -153,8 +146,6 @@ class ServicePlugin :
             }
         }
     }
-
-    // --- start / stop ------------------------------------------------------
 
     private fun handleStart(call: MethodCall, result: MethodChannel.Result) {
         val json = call.argument<String>("data") ?: call.arguments as? String
@@ -200,15 +191,15 @@ class ServicePlugin :
         }
     }
 
-    // --- notification / state passthrough ----------------------------------
-
     private fun handleUpdateNotificationParams(call: MethodCall, result: MethodChannel.Result) {
         val json = call.arguments<String>() ?: ""
+        CommonGlobalState.log("updateNotificationParams: raw=$json")
         val params = try {
             gson.fromJson(json, NotificationParams::class.java) ?: NotificationParams()
         } catch (_: Exception) {
             NotificationParams()
         }
+        CommonGlobalState.log("updateNotificationParams: title=${params.title}")
         launch {
             Service.updateNotificationParams(params)
             result.successOnMain(true)
@@ -226,8 +217,6 @@ class ServicePlugin :
         }
     }
 
-    // --- subscription notification ----------------------------------------
-
     private fun handleShowSubscriptionNotification(call: MethodCall, result: MethodChannel.Result) {
         val args = call.arguments as? Map<*, *> ?: run { result.successOnMain(false); return }
         val title = args["title"] as? String ?: ""
@@ -243,18 +232,18 @@ class ServicePlugin :
                 val ch = NotificationChannel(
                     GlobalState.SUBSCRIPTION_NOTIFICATION_CHANNEL,
                     "Subscription Updates",
-                    NotificationManager.IMPORTANCE_DEFAULT,
+                    NotificationManager.IMPORTANCE_HIGH,
                 )
                 manager.createNotificationChannel(ch)
             }
         }
 
         val builder = NotificationCompat.Builder(ctx, GlobalState.SUBSCRIPTION_NOTIFICATION_CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.follow.clashx.service.R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
 
         if (actionUrl.isNotBlank()) {
             val openIntent = Intent(Intent.ACTION_VIEW, Uri.parse(actionUrl))
@@ -270,8 +259,6 @@ class ServicePlugin :
         result.successOnMain(true)
     }
 
-    // --- helpers -----------------------------------------------------------
-
     private fun dispatchEvent(value: String?) {
         CommonGlobalState.launch {
             eventSemaphore.withPermit {
@@ -281,7 +268,9 @@ class ServicePlugin :
     }
 
     private fun invokeOnMain(method: String, argument: Any?) {
+        if (!attached) return
         Handler(Looper.getMainLooper()).post {
+            if (!attached) return@post
             runCatching { channel.invokeMethod(method, argument) }
         }
     }

@@ -574,19 +574,28 @@ class _CoreUpdateItemState extends State<_CoreUpdateItem> {
       });
       return;
     }
-    final newVersion = (_release!['tag_name'] as String).replaceFirst('core-', '');
     setState(() {
       _downloading = false;
-      _status = AppLocalizations.of(context).coreUpdateSuccess;
+      _busy = false;
     });
-    await globalState.appController.restartCore();
-    if (mounted) {
-      setState(() {
-        _busy = false;
-        _release = null;
-        _status = newVersion;
-      });
-    }
+    if (!mounted) return;
+    _showRestartDialog();
+  }
+
+  void _showRestartDialog() {
+    final appLocale = AppLocalizations.of(context);
+    globalState.showCommonDialog(
+      dismissible: false,
+      child: CommonDialog(
+        title: appLocale.coreUpdateSuccess,
+        actions: [
+          TextButton(
+            onPressed: () => globalState.appController.handleRestart(),
+            child: Text(appLocale.restart),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

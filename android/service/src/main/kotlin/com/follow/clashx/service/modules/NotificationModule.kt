@@ -9,9 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.follow.clashx.common.GlobalState
-import com.follow.clashx.common.formatBytes
 import com.follow.clashx.common.startForeground
-import com.follow.clashx.core.Core
 import com.follow.clashx.service.Module
 import com.follow.clashx.service.State
 import kotlinx.coroutines.CoroutineScope
@@ -20,15 +18,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 
 class NotificationModule(service: Service) : Module(service) {
     private val scope = CoroutineScope(SupervisorJob())
-    private var tickerJob: Job? = null
+    private var paramsJob: Job? = null
 
     override suspend fun install() {
         ensureChannel()
-        val notification = buildNotification(State.notificationParamsFlow.value.title, "")
+        val title = State.notificationParamsFlow.value.title
+        val notification = buildNotification(title)
         val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         } else {
@@ -36,13 +34,17 @@ class NotificationModule(service: Service) : Module(service) {
         }
         service.startForeground(GlobalState.NOTIFICATION_ID, notification, fgType)
 
-        tickerJob = scope.launch {
-            com.follow.clashx.common.tickerFlow(1_000L).collectLatest { tick() }
+        paramsJob = scope.launch {
+            State.notificationParamsFlow.collectLatest { params ->
+                val n = buildNotification(params.title)
+                ContextCompat.getSystemService(service, NotificationManager::class.java)
+                    ?.notify(GlobalState.NOTIFICATION_ID, n)
+            }
         }
     }
 
     override suspend fun uninstall() {
-        tickerJob?.cancel()
+        paramsJob?.cancel()
         scope.cancel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -50,23 +52,6 @@ class NotificationModule(service: Service) : Module(service) {
             @Suppress("DEPRECATION")
             service.stopForeground(true)
         }
-    }
-
-    private fun tick() {
-        val params = State.notificationParamsFlow.value
-        val text = getTrafficText()
-        val notification = buildNotification(params.title, text)
-        ContextCompat.getSystemService(service, NotificationManager::class.java)
-            ?.notify(GlobalState.NOTIFICATION_ID, notification)
-    }
-
-    private fun getTrafficText(): String {
-        return runCatching {
-            val json = JSONObject(Core.getTraffic())
-            val up = json.optLong("up", 0)
-            val down = json.optLong("down", 0)
-            "↑ ${formatBytes(up)}/s  ↓ ${formatBytes(down)}/s"
-        }.getOrDefault("")
     }
 
     private fun ensureChannel() {
@@ -81,11 +66,10 @@ class NotificationModule(service: Service) : Module(service) {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(title: String, text: String): android.app.Notification {
+    private fun buildNotification(title: String): android.app.Notification {
         return NotificationCompat.Builder(service, GlobalState.NOTIFICATION_CHANNEL)
             .setSmallIcon(com.follow.clashx.service.R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText(text)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

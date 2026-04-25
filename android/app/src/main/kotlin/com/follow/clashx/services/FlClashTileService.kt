@@ -24,7 +24,7 @@ class FlClashXTileService : TileService() {
 
         @Volatile
         private var lastClickTime: Long = 0L
-        private const val DEBOUNCE_MS = 2000L
+        private const val DEBOUNCE_MS = 500L
     }
 
     private val observer = Observer<RunState> { syncTile() }
@@ -42,6 +42,7 @@ class FlClashXTileService : TileService() {
 
     override fun onClick() {
         val tile = qsTile ?: return
+        if (GlobalState.runStateFlow.value == RunState.PENDING) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastClickTime < DEBOUNCE_MS) return
         lastClickTime = now
@@ -55,7 +56,7 @@ class FlClashXTileService : TileService() {
             Tile.STATE_ACTIVE -> {
                 tile.state = Tile.STATE_INACTIVE
                 tile.updateTile()
-                unlockAndRun { GlobalState.handleStop() }
+                GlobalState.handleStop()
             }
         }
     }

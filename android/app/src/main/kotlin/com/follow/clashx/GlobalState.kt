@@ -27,13 +27,6 @@ import kotlinx.coroutines.withContext
 
 enum class RunState { START, PENDING, STOP }
 
-/**
- * App-process state facade. Kept as a single object so widgets, TempActivity and
- * plugins don't need to change their import shape. Under the hood this bridges
- * to the `:remote` process via [Service] AIDL, reacts to SERVICE_CREATED /
- * SERVICE_DESTROYED broadcasts (including Always-on VPN starts) and exposes
- * LiveData for legacy widget observers.
- */
 object GlobalState {
     private const val TAG = "GlobalState"
 
@@ -42,13 +35,11 @@ object GlobalState {
     const val NOTIFICATION_ID = 1
     const val SUBSCRIPTION_NOTIFICATION_ID = 2
 
-    // --- Legacy LiveData surface (observed by widget providers) ----------------
 
     val runState: MutableLiveData<RunState> = MutableLiveData(RunState.STOP)
     val currentMode: MutableLiveData<String> = MutableLiveData("rule")
     val globalModeEnabled: MutableLiveData<Boolean> = MutableLiveData(true)
 
-    // --- Modern flow surface ---------------------------------------------------
 
     val runStateFlow: MutableStateFlow<RunState> = MutableStateFlow(RunState.STOP)
 
@@ -60,10 +51,8 @@ object GlobalState {
     private var broadcastJob: Job? = null
     private var pendingTimeoutJob: Job? = null
 
-    // --- Lifecycle --------------------------------------------------------------
 
     fun install() {
-        // Keep the LiveData mirror in sync with the StateFlow.
         CommonGlobalState.launch {
             runStateFlow.collect { state ->
                 withContext(Dispatchers.Main) {
@@ -71,8 +60,6 @@ object GlobalState {
                     if (state != RunState.PENDING) {
                         pendingTimeoutJob?.cancel()
                     }
-                    // Only refresh tile/widgets for final states, not PENDING.
-                    // PENDING would revert optimistic UI updates.
                     if (state != RunState.PENDING) {
                         runCatching {
                             com.follow.clashx.services.FlClashXTileService.requestUpdate(
@@ -99,7 +86,6 @@ object GlobalState {
                 }
             }
         }
-        // React to cross-process lifecycle broadcasts from the `:remote` process.
         broadcastJob?.cancel()
         broadcastJob = CommonGlobalState.application
             .receiveBroadcastFlow(
@@ -121,7 +107,6 @@ object GlobalState {
             .launchIn(CommonGlobalState.scope)
     }
 
-    // --- Plugin accessors ------------------------------------------------------
 
     fun getCurrentAppPlugin(): AppPlugin? =
         flutterEngine?.plugins?.get(AppPlugin::class.java) as? AppPlugin
@@ -132,7 +117,6 @@ object GlobalState {
     suspend fun getText(text: String): String =
         getCurrentAppPlugin()?.getText(text) ?: ""
 
-    // --- State synchronization -------------------------------------------------
 
     fun syncStatus() {
         CommonGlobalState.launch { handleSyncState() }
@@ -146,7 +130,6 @@ object GlobalState {
                 runStateFlow.tryEmit(RunState.STOP)
                 return@withLock
             }
-            // Don't revert to STOP within 15s of a start request (coldStart takes time)
             val recentStart = android.os.SystemClock.elapsedRealtime() - startRequestedAt < 15_000L
             runCatching {
                 Service.bind()
@@ -179,7 +162,6 @@ object GlobalState {
         }
     }
 
-    // --- Run/Stop/Toggle action entry points (called from widgets/TempActivity) --
 
     fun handleToggle() {
         CommonGlobalState.launch {
@@ -233,7 +215,6 @@ object GlobalState {
             return
         }
 
-        // No Flutter engine — trigger FlVpnService directly via coldStart path.
         val hasSavedParams = com.follow.clashx.common.SavedParams.loadQuickStartParams() != null
         if (!hasSavedParams) {
             runStateFlow.tryEmit(RunState.STOP)
@@ -271,27 +252,19 @@ object GlobalState {
     private suspend fun triggerStop() {
         if (runStateFlow.value == RunState.STOP) return
 
-        val tile = getCurrentTilePlugin()
-        if (tile != null) {
-            runStateFlow.tryEmit(RunState.PENDING)
-            tile.handleStop()
-            schedulePendingTimeout()
-            return
-        }
-
-        // Direct stop — update UI immediately, then clean up in background.
         startRequestedAt = 0L
         com.follow.clashx.common.SavedParams.setVpnActive(false)
         runTime = 0L
         runStateFlow.tryEmit(RunState.STOP)
-        // Send ACTION_STOP to FlVpnService (handles Core.stopTun + stopSelf)
+
+        runCatching { getCurrentTilePlugin()?.handleStop() }
+
         runCatching {
             val ctx = CommonGlobalState.application
             val stopIntent = android.content.Intent(ctx, com.follow.clashx.service.FlVpnService::class.java)
                 .setAction(com.follow.clashx.service.FlVpnService.ACTION_STOP)
             androidx.core.content.ContextCompat.startForegroundService(ctx, stopIntent)
         }
-        // Also stop listener via AIDL (non-blocking, fire and forget)
         CommonGlobalState.launch {
             runCatching { Service.stopListener() }
             runCatching { Service.stopService() }
