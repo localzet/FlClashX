@@ -14,7 +14,6 @@ analyzer:
     - lib/generated_plugin_registrant.dart
     - lib/clash/generated/**
     - lib/l10n/**
-    - plugins/flutter_distributor/**
 
 linter:
   rules:

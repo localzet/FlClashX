@@ -143,8 +143,8 @@ class ClashService extends ClashHandlerInterface {
   Future<void> _destroySocket() async {
     await _socketSubscription?.cancel();
     _socketSubscription = null;
-    _flushPendingCompleters();
     if (socketCompleter.isCompleted) {
+      _flushPendingCompleters();
       final lastSocket = await socketCompleter.future;
       await lastSocket.close();
       socketCompleter = Completer();

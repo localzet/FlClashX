@@ -275,6 +275,9 @@ object GlobalState {
         val ctx = CommonGlobalState.application
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
         if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) return
+        val prefs = ctx.getSharedPreferences("flclashx_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("battery_optimization_asked", false)) return
+        prefs.edit().putBoolean("battery_optimization_asked", true).apply()
         runCatching {
             val intent = Intent(
                 Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,

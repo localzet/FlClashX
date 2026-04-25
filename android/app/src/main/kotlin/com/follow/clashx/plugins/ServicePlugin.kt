@@ -155,7 +155,6 @@ class ServicePlugin :
             Log.w("ServicePlugin", "VpnOptions parse failed, using defaults: ${e.message}")
             VpnOptions()
         }
-        GlobalState.requestBatteryOptimizationExemption()
         if (options.enable) {
             GlobalState.getCurrentAppPlugin()?.requestVpnPermission {
                 doStartService(options, result)

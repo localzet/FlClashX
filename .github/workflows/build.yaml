@@ -51,8 +51,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          submodules: recursive
 
       - name: Setup macOS Signing Certificate
         if: matrix.platform == 'macos'
@@ -140,6 +138,12 @@ jobs:
           EOF
 
           echo "✅ Created Local.xcconfig for signing"
+
+      - name: Setup Inno Setup
+        if: matrix.platform == 'windows'
+        run: |
+          choco install innosetup -y
+          echo "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Setup
         run: dart setup.dart ${{ matrix.platform }} ${{ matrix.arch && format('--arch {0}', matrix.arch) }} ${{ env.IS_STABLE == 'true' && '--env stable' || '' }}

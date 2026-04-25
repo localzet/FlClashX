@@ -186,10 +186,10 @@ class Build {
       runInShell: runInShell,
     );
     process.stdout.listen((data) {
-      print(utf8.decode(data));
+      print(utf8.decode(data, allowMalformed: true));
     });
     process.stderr.listen((data) {
-      print(utf8.decode(data));
+      print(utf8.decode(data, allowMalformed: true));
     });
     final exitCode = await process.exitCode;
     if (exitCode != 0 && name != null) throw "$name error";
@@ -376,29 +376,10 @@ class Build {
 
   static List<String> getExecutable(String command) => command.split(" ");
 
-  static getDistributor() async {
-    final distributorDir = join(
-      current,
-      "plugins",
-      "flutter_distributor",
-      "packages",
-      "flutter_distributor",
-    );
-
-    await exec(
-      name: "clean distributor",
-      Build.getExecutable("flutter clean"),
-      workingDirectory: distributorDir,
-    );
-    await exec(
-      name: "upgrade distributor",
-      Build.getExecutable("flutter pub upgrade"),
-      workingDirectory: distributorDir,
-    );
-    await exec(
-      name: "get distributor",
-      Build.getExecutable("dart pub global activate -s path $distributorDir"),
-    );
+  static String readVersion() {
+    final pubspec = File(join(current, "pubspec.yaml")).readAsStringSync();
+    final match = RegExp(r'version:\s*(.+)').firstMatch(pubspec);
+    return match?.group(1)?.split('+').first ?? "0.0.0";
   }
 
   static copyFile(String sourceFilePath, String destinationFilePath) {
@@ -582,19 +563,155 @@ class BuildCommand extends Command {
     }
   }
 
-  _buildDistributor({
-    required Target target,
-    required String targets,
-    String args = '',
+  _buildWindowsApp({
+    required Arch arch,
     required String env,
+    required String coreVersion,
+    required String token,
   }) async {
-    await Build.getDistributor();
     await Build.exec(
-      name: name,
-      Build.getExecutable(
-        "flutter_distributor package --skip-clean --platform ${target.name} --targets $targets --flutter-build-args=verbose$args --build-dart-define=APP_ENV=$env",
-      ),
+      name: "flutter build windows",
+      [
+        "flutter", "build", "windows", "--release",
+        "--dart-define=APP_ENV=$env",
+        "--dart-define=CORE_SHA256=$token",
+        "--dart-define=CORE_VERSION=$coreVersion",
+      ],
     );
+
+    final buildDir = join(current, "build", "windows", "x64", "runner", "Release");
+    if (arch == Arch.arm64) {
+      // arm64 build output may be in a different path
+      // fallback handled below
+    }
+
+    final version = Build.readVersion();
+    final distDir = Directory(Build.distPath);
+    if (!distDir.existsSync()) distDir.createSync(recursive: true);
+
+    final archName = arch.name;
+    final zipName = "${Build.appName}-windows-$archName.zip";
+    final zipPath = join(Build.distPath, zipName);
+    await Build.exec(
+      name: "create zip",
+      ["powershell", "Compress-Archive", "-Path", "$buildDir\\*", "-DestinationPath", zipPath, "-Force"],
+    );
+    print("✅ ZIP created: $zipPath");
+
+    final issTemplate = File(join(current, "windows", "packaging", "exe", "inno_setup.iss"));
+    if (issTemplate.existsSync()) {
+      final issContent = issTemplate.readAsStringSync()
+          .replaceAll("{{APP_ID}}", "728B3532-C74B-4870-9068-BE70FE12A3E6")
+          .replaceAll("{{APP_VERSION}}", version)
+          .replaceAll("{{DISPLAY_NAME}}", Build.appName)
+          .replaceAll("{{PUBLISHER_NAME}}", "pluralplay")
+          .replaceAll("{{PUBLISHER_URL}}", "https://github.com/pluralplay/FlClashX")
+          .replaceAll("{{INSTALL_DIR_NAME}}", "{autopf}\\${Build.appName}")
+          .replaceAll("{{OUTPUT_BASE_FILENAME}}", "${Build.appName}-windows-$archName")
+          .replaceAll("{{SETUP_ICON_FILE}}", join(current, "windows", "runner", "resources", "app_icon.ico"))
+          .replaceAll("{{PRIVILEGES_REQUIRED}}", "admin")
+          .replaceAll("{{ARCH}}", archName == "amd64" ? "x64" : "arm64")
+          .replaceAll("{{SOURCE_DIR}}", buildDir)
+          .replaceAll("{{EXECUTABLE_NAME}}", "${Build.appName}.exe");
+
+      var processed = issContent;
+      final locales = [
+        {"lang": "ru"},
+        {"lang": "en"},
+      ];
+      final langLines = <String>[];
+      for (final locale in locales) {
+        final lang = locale["lang"]!;
+        if (lang == "en") langLines.add('Name: "english"; MessagesFile: "compiler:Default.isl"');
+        if (lang == "ru") langLines.add('Name: "russian"; MessagesFile: "compiler:Languages\\Russian.isl"');
+      }
+      processed = processed.replaceAll(
+        RegExp(r'\{% for locale in LOCALES %\}.*?\{% endfor %\}', dotAll: true),
+        langLines.join('\n'),
+      );
+
+      final issOut = File(join(Build.distPath, "setup.iss"));
+      issOut.writeAsStringSync(processed);
+      await Build.exec(
+        name: "inno setup",
+        ["iscc", issOut.path],
+      );
+      print("✅ EXE installer created");
+    }
+  }
+
+  _buildLinuxApp({
+    required Arch arch,
+    required String env,
+    required String coreVersion,
+  }) async {
+    final targetMap = {
+      Arch.arm64: "linux-arm64",
+      Arch.amd64: "linux-x64",
+    };
+    await Build.exec(
+      name: "flutter build linux",
+      [
+        "flutter", "build", "linux", "--release",
+        "--target-platform=${targetMap[arch]}",
+        "--dart-define=APP_ENV=$env",
+        "--dart-define=CORE_VERSION=$coreVersion",
+      ],
+    );
+
+    final version = Build.readVersion();
+    final archName = arch.name;
+    final bundleDir = join(current, "build", "linux", targetMap[arch]!.replaceAll("linux-", ""), "release", "bundle");
+    final distDir = Directory(Build.distPath);
+    if (!distDir.existsSync()) distDir.createSync(recursive: true);
+
+    final tarName = "${Build.appName}-linux-$archName.tar.gz";
+    final tarPath = join(Build.distPath, tarName);
+    await Build.exec(
+      name: "create tar.gz",
+      ["tar", "czf", tarPath, "-C", bundleDir, "."],
+    );
+    print("✅ tar.gz created: $tarPath");
+  }
+
+  _buildAndroidApp({
+    required String env,
+    required String coreVersion,
+  }) async {
+    final distDir = Directory(Build.distPath);
+    if (!distDir.existsSync()) distDir.createSync(recursive: true);
+
+    await Build.exec(
+      name: "flutter build apk (split)",
+      [
+        "flutter", "build", "apk", "--release",
+        "--split-per-abi",
+        "--dart-define=APP_ENV=$env",
+        "--dart-define=CORE_VERSION=$coreVersion",
+      ],
+    );
+
+    final splitDir = join(current, "build", "app", "outputs", "flutter-apk");
+    for (final f in Directory(splitDir).listSync()) {
+      if (f.path.endsWith(".apk")) {
+        final name = basename(f.path);
+        Build.copyFile(f.path, join(Build.distPath, name));
+      }
+    }
+
+    await Build.exec(
+      name: "flutter build apk (universal)",
+      [
+        "flutter", "build", "apk", "--release",
+        "--dart-define=APP_ENV=$env",
+        "--dart-define=CORE_VERSION=$coreVersion",
+      ],
+    );
+    Build.copyFile(
+      join(splitDir, "app-release.apk"),
+      join(Build.distPath, "${Build.appName}-android-universal.apk"),
+    );
+    print("✅ APKs created in ${Build.distPath}");
   }
 
   Future<String?> get systemArch async {
@@ -637,60 +754,28 @@ class BuildCommand extends Command {
 
     switch (target) {
       case Target.windows:
-        final token = target != Target.android
-            ? await Build.calcSha256(corePaths.first)
-            : null;
-        Build.buildHelper(target, token!, arch: arch);
-        _buildDistributor(
-          target: target,
-          targets: "exe,zip",
-          args:
-              " --description $archName --build-dart-define=CORE_SHA256=$token --build-dart-define=CORE_VERSION=$coreVersion",
+        final token = await Build.calcSha256(corePaths.first);
+        await Build.buildHelper(target, token, arch: arch);
+        await _buildWindowsApp(
+          arch: arch!,
           env: env,
+          coreVersion: coreVersion,
+          token: token,
         );
         return;
       case Target.linux:
-        final targetMap = {
-          Arch.arm64: "linux-arm64",
-          Arch.amd64: "linux-x64",
-        };
-        final targets = [
-          "deb",
-          if (arch == Arch.amd64) "appimage",
-          if (arch == Arch.amd64) "rpm",
-        ].join(",");
-        final defaultTarget = targetMap[arch];
         await _getLinuxDependencies(arch!);
-        _buildDistributor(
-          target: target,
-          targets: targets,
-          args:
-              " --description $archName --build-target-platform $defaultTarget --build-dart-define=CORE_VERSION=$coreVersion",
+        await _buildLinuxApp(
+          arch: arch!,
           env: env,
+          coreVersion: coreVersion,
         );
         return;
       case Target.android:
-        // Build all architectures: armeabi-v7a, arm64-v8a, x86_64
-        final allTargets = "android-arm,android-arm64,android-x64";
-
-        // Build split APKs (one per architecture)
-        await _buildDistributor(
-          target: target,
-          targets: "apk",
-          args:
-              ",split-per-abi --build-target-platform $allTargets --build-dart-define=CORE_VERSION=$coreVersion",
+        await _buildAndroidApp(
           env: env,
+          coreVersion: coreVersion,
         );
-
-        // Build universal APK (all architectures in one file)
-        await _buildDistributor(
-          target: target,
-          targets: "apk",
-          args:
-              " --build-target-platform $allTargets --build-dart-define=CORE_VERSION=$coreVersion",
-          env: env,
-        );
-
         return;
       case Target.macos:
         await _getMacosDependencies();
