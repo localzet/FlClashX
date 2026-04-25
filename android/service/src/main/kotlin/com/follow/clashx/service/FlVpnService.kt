@@ -1,6 +1,7 @@
 package com.follow.clashx.service
 
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Binder
 import android.os.IBinder
@@ -232,9 +233,17 @@ class FlVpnService : VpnService(), IBaseService {
         com.follow.clashx.core.Core.startTun(
             fd = fd,
             protect = { fdToProtect -> protect(fdToProtect) },
-            resolverProcess = { _, _, _, uid ->
-                if (uid <= 0) return@startTun ""
-                packageManager.getPackagesForUid(uid)?.firstOrNull() ?: ""
+            resolverProcess = { protocol, source, target, uid ->
+                val resolvedUid = if (uid > 0) uid else {
+                    try {
+                        val cm = getSystemService(ConnectivityManager::class.java)
+                        val proto = if (protocol == 6) android.system.OsConstants.IPPROTO_TCP
+                                    else android.system.OsConstants.IPPROTO_UDP
+                        cm.getConnectionOwnerUid(proto, source, target)
+                    } catch (_: Exception) { -1 }
+                }
+                if (resolvedUid <= 0) return@startTun ""
+                packageManager.getPackagesForUid(resolvedUid)?.firstOrNull() ?: ""
             },
         )
     }

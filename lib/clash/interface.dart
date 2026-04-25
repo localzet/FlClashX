@@ -252,7 +252,7 @@ abstract class ClashHandlerInterface with ClashInterface {
   Future<String> updateGeoData(UpdateGeoDataParams params) => invoke<String>(
         method: ActionMethod.updateGeoData,
         data: json.encode(params),
-        timeout: const Duration(minutes: 1));
+        timeout: const Duration(seconds: 100));
 
   @override
   Future<String> sideLoadExternalProvider({

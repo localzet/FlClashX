@@ -168,7 +168,8 @@ class Build {
     return "gcc";
   }
 
-  static get tags => "with_gvisor,cmfa";
+  static String tagsFor(Target target) =>
+      target == Target.android ? "with_gvisor,cmfa" : "with_gvisor";
 
   static Future<void> exec(
     List<String> executable, {
@@ -284,7 +285,7 @@ class Build {
         "go",
         "build",
         "-ldflags=-w -s -X github.com/metacubex/mihomo/constant.Version=$coreVersion",
-        "-tags=$tags",
+        "-tags=${tagsFor(target)}",
         if (isLib) "-buildmode=c-shared",
         "-o",
         realOutPath,
@@ -635,7 +636,7 @@ class BuildCommand extends Command {
       issOut.writeAsStringSync(processed);
       await Build.exec(
         name: "inno setup",
-        ["iscc", issOut.path],
+        [r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe", issOut.path],
       );
       issOut.deleteSync();
       print("✅ EXE installer created");
