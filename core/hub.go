@@ -657,6 +657,14 @@ func handleHealthCheck(groupName string, fn func(value string)) {
 				testUrl = defaultUrl
 			}
 			log.Infoln("[HealthCheck] testing group: %s url: %s", name, testUrl)
+			for _, p := range group.Providers() {
+				for _, px := range p.Proxies() {
+					sendMessage(Message{
+						Type: DelayMessage,
+						Data: &Delay{Url: testUrl, Name: px.Name(), Value: 0},
+					})
+				}
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			dm, err := group.URLTest(ctx, testUrl, expectedStatus)
 			cancel()
@@ -667,7 +675,7 @@ func handleHealthCheck(groupName string, fn func(value string)) {
 			for proxyName, delay := range dm {
 				sendMessage(Message{
 					Type: DelayMessage,
-					Data: &Delay{Name: proxyName, Value: int32(delay)},
+					Data: &Delay{Url: testUrl, Name: proxyName, Value: int32(delay)},
 				})
 			}
 			log.Infoln("[HealthCheck] group %s done, %d results", name, len(dm))

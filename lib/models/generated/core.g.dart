@@ -334,6 +334,7 @@ const _$ActionMethodEnumMap = {
   ActionMethod.crash: 'crash',
   ActionMethod.setupConfig: 'setupConfig',
   ActionMethod.getCoreVersion: 'getCoreVersion',
+  ActionMethod.healthCheck: 'healthCheck',
   ActionMethod.setState: 'setState',
   ActionMethod.startTun: 'startTun',
   ActionMethod.stopTun: 'stopTun',
