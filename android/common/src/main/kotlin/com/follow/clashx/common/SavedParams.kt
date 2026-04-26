@@ -28,15 +28,25 @@ object SavedParams {
 
     fun loadQuickStartParams(): QuickStartParams? {
         if (!paramsFile.exists()) return null
+        val text = runCatching { paramsFile.readText() }.getOrNull()
+        if (text.isNullOrBlank()) {
+            GlobalState.log("loadQuickStartParams: file empty or unreadable, clearing")
+            runCatching { paramsFile.delete() }
+            setVpnActive(false)
+            return null
+        }
         return runCatching {
-            val json = JSONObject(paramsFile.readText())
+            val json = JSONObject(text)
             val init = json.optString("init", "")
             val setup = json.optString("setup", "")
             val state = json.optString("state", "")
-            if (init.isBlank() || setup.isBlank()) null
-            else QuickStartParams(init, setup, state)
+            if (init.isBlank() || setup.isBlank()) {
+                setVpnActive(false)
+                null
+            } else QuickStartParams(init, setup, state)
         }.getOrElse {
             GlobalState.log("loadQuickStartParams error: ${it.message}")
+            setVpnActive(false)
             null
         }
     }

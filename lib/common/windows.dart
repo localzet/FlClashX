@@ -25,13 +25,13 @@ class Windows {
   late DynamicLibrary _shell32;
   late DynamicLibrary _uxtheme;
 
-  bool isDarkMode() {
+  bool _readThemeValue(String valueName) {
     try {
       return using((arena) {
         final keyPath =
             r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
                 .toNativeUtf16(allocator: arena);
-        final valueName = 'AppsUseLightTheme'.toNativeUtf16(allocator: arena);
+        final valueNamePtr = valueName.toNativeUtf16(allocator: arena);
         final phkResult = arena<HKEY>();
 
         var result = RegOpenKeyEx(HKEY_CURRENT_USER, keyPath, 0, KEY_READ, phkResult);
@@ -42,7 +42,7 @@ class Windows {
         final dataSize = arena<DWORD>();
         dataSize.value = sizeOf<DWORD>();
 
-        result = RegQueryValueEx(hKey, valueName, nullptr, nullptr, data.cast(), dataSize);
+        result = RegQueryValueEx(hKey, valueNamePtr, nullptr, nullptr, data.cast(), dataSize);
         RegCloseKey(hKey);
         if (result != ERROR_SUCCESS) return false;
 
@@ -52,6 +52,10 @@ class Windows {
       return false;
     }
   }
+
+  bool isDarkMode() => _readThemeValue('AppsUseLightTheme');
+
+  bool isSystemDarkMode() => _readThemeValue('SystemUsesLightTheme');
 
   void enableDarkModeForApp() {
     try {

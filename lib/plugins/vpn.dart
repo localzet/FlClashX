@@ -48,9 +48,12 @@ class Vpn {
 
   Future<void> _pushNotification() async {
     try {
-      final title = _cachedServerName.isNotEmpty
-          ? '$_cachedProfileName / $_cachedServerName'
+      final displayName = _cachedServiceName.isNotEmpty
+          ? _cachedServiceName
           : _cachedProfileName;
+      final title = _cachedServerName.isNotEmpty
+          ? '$displayName / $_cachedServerName'
+          : displayName;
       commonPrint.log('[Vpn] pushNotification: title="$title" server="$_cachedServiceName" clashLib=${clashLib != null}');
       await clashLib?.updateNotificationParams(
         title: title,

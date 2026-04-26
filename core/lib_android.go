@@ -274,3 +274,12 @@ func updateDns(s *C.char) {
 	dnsList := C.GoString(s)
 	handleUpdateDns(dnsList)
 }
+
+//export resetConnections
+func resetConnections() {
+	go func() {
+		handleCloseConnections()
+		handleResetConnections()
+		log.Infoln("[Network] connections reset after network change")
+	}()
+}

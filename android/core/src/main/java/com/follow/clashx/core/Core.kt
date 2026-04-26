@@ -57,6 +57,7 @@ data object Core {
 
     external fun setState(state: String)
     external fun updateDns(dns: String)
+    external fun resetConnections()
 
     // --- Getters --------------------------------------------------------------
 

@@ -22,6 +22,23 @@ class System {
   bool get isDesktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
+  bool? get isWindowsSystemDark {
+    if (!Platform.isWindows) return null;
+    try {
+      final result = Process.runSync('reg', [
+        'query',
+        r'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize',
+        '/v', 'SystemUsesLightTheme',
+      ]);
+      if (result.exitCode != 0) return null;
+      final match = RegExp(r'0x(\d+)').firstMatch(result.stdout.toString());
+      if (match == null) return null;
+      return int.tryParse(match.group(1)!) == 0;
+    } catch (_) {
+      return null;
+    }
+  }
+
   bool get isMobile => Platform.isAndroid || Platform.isIOS;
 
   Future<bool> get isAndroidTV async {

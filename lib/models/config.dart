@@ -271,12 +271,22 @@ class Config with _$Config {
           (json["vpnProps"]! as Map)["accessControl"] = accessControlMap;
         }
       }
-      
+
       // Migration: Replace deprecated "standard" iconStyle with "icon"
       final proxiesStyle = json["proxiesStyle"];
       if (proxiesStyle is Map) {
         if (proxiesStyle["iconStyle"] == "standard") {
           proxiesStyle["iconStyle"] = "icon";
+        }
+      }
+
+      // Migration: strip removed fields from profiles
+      final profiles = json["profiles"];
+      if (profiles is List) {
+        for (final p in profiles) {
+          if (p is Map) {
+            p.remove("updateMethod");
+          }
         }
       }
     } catch (_) {}

@@ -401,10 +401,10 @@ func setupConfig(params *SetupParams) error {
 	if runtime.GOOS == "android" || !isRunning {
 		currentConfig.General.Tun.Enable = false
 	}
-	// Parse and cache config only. Full runtime apply happens on Start.
 	applyStart := time.Now()
-	executor.ApplyConfig(currentConfig, false)
+	executor.ApplyConfig(currentConfig, true)
 	log.Infoln("[Setup] executor.ApplyConfig took %s", time.Since(applyStart))
+	go runtime.GC()
 	currentConfig.General.Tun.Enable = pendingTunEnable
 	// External-controller lifecycle is independent from TUN start/stop.
 	// Recreate API server during setup so it survives app restarts without

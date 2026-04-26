@@ -152,6 +152,7 @@ extern char* getCurrentProfileName(void);
 extern char* getAndroidVpnOptions(void);
 extern void setState(char* s);
 extern void updateDns(char* s);
+extern void resetConnections(void);
 
 #ifdef __cplusplus
 }

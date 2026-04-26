@@ -143,7 +143,11 @@ object GlobalState {
                 runStateFlow.tryEmit(state)
             }.onFailure {
                 Log.w(TAG, "syncState failed: ${it.message}")
-                runStateFlow.tryEmit(if (vpnActive || recentStart) RunState.START else RunState.STOP)
+                if (!recentStart) {
+                    runTime = 0L
+                    com.follow.clashx.common.SavedParams.setVpnActive(false)
+                    runStateFlow.tryEmit(RunState.STOP)
+                }
             }
         }
     }
@@ -165,6 +169,7 @@ object GlobalState {
 
     fun handleToggle() {
         CommonGlobalState.launch {
+            handleSyncState()
             runLock.withLock {
                 when (runStateFlow.value) {
                     RunState.STOP, RunState.PENDING -> triggerStart()

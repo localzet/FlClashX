@@ -114,6 +114,8 @@ class ServicePlugin :
 
     private fun onServiceDisconnected(message: String) {
         Log.w("ServicePlugin", "remote service disconnected: $message")
+        GlobalState.runTime = 0L
+        com.follow.clashx.common.SavedParams.setVpnActive(false)
         GlobalState.runStateFlow.tryEmit(RunState.STOP)
         invokeOnMain("crash", message)
     }
@@ -169,6 +171,9 @@ class ServicePlugin :
         launch {
             val rt = Service.startService(options, GlobalState.runTime)
             GlobalState.runTime = rt
+            if (rt == 0L) {
+                com.follow.clashx.common.SavedParams.setVpnActive(false)
+            }
             GlobalState.runStateFlow.tryEmit(if (rt == 0L) RunState.STOP else RunState.START)
             result.successOnMain(rt)
         }
@@ -179,6 +184,7 @@ class ServicePlugin :
             runCatching { Service.stopService() }
                 .onFailure { Log.w("ServicePlugin", "stopService failed: ${it.message}") }
             GlobalState.runTime = 0L
+            com.follow.clashx.common.SavedParams.setVpnActive(false)
             GlobalState.runStateFlow.tryEmit(RunState.STOP)
             result.successOnMain(true)
         }
@@ -201,7 +207,8 @@ class ServicePlugin :
         }
         CommonGlobalState.log("updateNotificationParams: title=${params.title}")
         launch {
-            Service.updateNotificationParams(params)
+            runCatching { Service.updateNotificationParams(params) }
+                .onFailure { Log.w("ServicePlugin", "updateNotificationParams failed: ${it.message}") }
             result.successOnMain(true)
         }
     }

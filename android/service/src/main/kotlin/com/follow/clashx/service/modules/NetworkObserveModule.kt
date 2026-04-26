@@ -13,8 +13,27 @@ import com.google.gson.Gson
 
 class NetworkObserveModule(service: Service) : Module(service) {
     private var registered = false
+    private var currentNetwork: Network? = null
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            super.onAvailable(network)
+            val prev = currentNetwork
+            currentNetwork = network
+            if (prev != null && prev != network) {
+                GlobalState.log("Network changed: $prev -> $network, resetting connections")
+                runCatching { com.follow.clashx.core.Core.resetConnections() }
+                    .onFailure { GlobalState.log("resetConnections failed: ${it.message}") }
+            }
+        }
+
+        override fun onLost(network: Network) {
+            super.onLost(network)
+            if (currentNetwork == network) {
+                currentNetwork = null
+            }
+        }
+
         override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
             super.onLinkPropertiesChanged(network, linkProperties)
             val dns = linkProperties.dnsServers.map { it.hostAddress ?: "" }.filter { it.isNotBlank() }

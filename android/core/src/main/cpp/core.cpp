@@ -190,6 +190,12 @@ Java_com_follow_clashx_core_Core_getConfig(JNIEnv *env, jobject, jstring s) {
 
 extern "C"
 JNIEXPORT void JNICALL
+Java_com_follow_clashx_core_Core_resetConnections(JNIEnv *, jobject) {
+    resetConnections();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
 Java_com_follow_clashx_core_Core_startListener(JNIEnv *, jobject) {
     startListener();
 }

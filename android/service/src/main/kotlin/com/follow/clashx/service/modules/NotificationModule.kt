@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.follow.clashx.common.GlobalState
+import com.follow.clashx.common.buildServiceNotification
 import com.follow.clashx.common.startForeground
 import com.follow.clashx.service.Module
 import com.follow.clashx.service.State
@@ -67,11 +68,9 @@ class NotificationModule(service: Service) : Module(service) {
     }
 
     private fun buildNotification(title: String): android.app.Notification {
-        return NotificationCompat.Builder(service, GlobalState.NOTIFICATION_CHANNEL)
-            .setSmallIcon(com.follow.clashx.service.R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        return service.buildServiceNotification(
+            com.follow.clashx.service.R.drawable.ic_notification,
+            title,
+        )
     }
 }

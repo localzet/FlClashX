@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flclashx/common/system.dart';
 import 'package:flclashx/common/utils.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flclashx/models/models.dart';
@@ -31,6 +32,7 @@ class Tray {
         brightness: brightness ??
             WidgetsBinding.instance.platformDispatcher.platformBrightness,
         isRunning: isRunning,
+        isSystemDark: Platform.isWindows ? system.isWindowsSystemDark : null,
       ),
       isTemplate: true,
     );

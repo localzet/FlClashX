@@ -7,6 +7,7 @@ import android.os.IBinder
 import com.follow.clashx.common.GlobalState
 import com.follow.clashx.common.promoteToForeground
 import com.follow.clashx.service.models.VpnOptions
+import kotlinx.coroutines.sync.withLock
 import com.follow.clashx.service.modules.NetworkObserveModule
 import com.follow.clashx.service.modules.NotificationModule
 
@@ -36,6 +37,10 @@ class CommonService : Service(), IBaseService {
     override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "com.follow.clashx.service.STOP") {
+            GlobalState.launch { State.runLock.withLock { handleStop() } }
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 

@@ -67,14 +67,33 @@ fun Service.ensureNotificationChannel() {
     }
 }
 
-fun Service.promoteToForeground(iconRes: Int, title: String = "FlClashX") {
-    ensureNotificationChannel()
-    val notification = androidx.core.app.NotificationCompat.Builder(this, GlobalState.NOTIFICATION_CHANNEL)
+fun Service.buildServiceNotification(iconRes: Int, title: String = "FlClashX"): android.app.Notification {
+    val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+    val contentIntent = if (launchIntent != null) {
+        android.app.PendingIntent.getActivity(
+            this, 0, launchIntent,
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    } else null
+    val stopIntent = android.content.Intent(this, this::class.java)
+        .setAction("com.follow.clashx.service.STOP")
+    val stopPending = android.app.PendingIntent.getService(
+        this, 1, stopIntent,
+        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+    return androidx.core.app.NotificationCompat.Builder(this, GlobalState.NOTIFICATION_CHANNEL)
         .setSmallIcon(iconRes)
         .setContentTitle(title)
         .setOngoing(true)
         .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+        .apply { if (contentIntent != null) setContentIntent(contentIntent) }
+        .addAction(android.R.drawable.ic_media_pause, "Stop", stopPending)
         .build()
+}
+
+fun Service.promoteToForeground(iconRes: Int, title: String = "FlClashX") {
+    ensureNotificationChannel()
+    val notification = buildServiceNotification(iconRes, title)
     val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
     } else 0

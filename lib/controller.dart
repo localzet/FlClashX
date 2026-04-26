@@ -158,9 +158,9 @@ class AppController {
       // Initialize foreground notification cache before starting
       initForegroundCache();
       await globalState.handleStart([
-        updateRunTime,
         updateTraffic,
       ]);
+      _startRunTimeTimer();
       final currentLastModified =
           await _ref.read(currentProfileProvider)?.profileLastModified;
       if (currentLastModified == null || lastProfileModified == null) {
@@ -173,6 +173,7 @@ class AppController {
       }
       applyProfileDebounce();
     } else {
+      _stopRunTimeTimer();
       await globalState.handleStop();
       clashCore.resetTraffic();
       _ref.read(trafficsProvider.notifier).clear();
@@ -180,6 +181,21 @@ class AppController {
       _ref.read(runTimeProvider.notifier).value = null;
       addCheckIpNumDebounce();
     }
+  }
+
+  Timer? _runTimeTimer;
+
+  void _startRunTimeTimer() {
+    _stopRunTimeTimer();
+    updateRunTime();
+    _runTimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      updateRunTime();
+    });
+  }
+
+  void _stopRunTimeTimer() {
+    _runTimeTimer?.cancel();
+    _runTimeTimer = null;
   }
 
   void updateRunTime() {
