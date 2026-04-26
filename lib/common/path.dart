@@ -53,6 +53,8 @@ class AppPath {
     return join(executableDirPath, "FlClashCore$executableExtension");
   }
 
+  String get corePendingPath => '$corePath.pending';
+
   String get helperPath => join(executableDirPath, "$appHelperService$executableExtension");
 
   Future<String> get downloadDirPath async {

@@ -37,7 +37,9 @@ class _TrayContainerState extends ConsumerState<TrayManager> with TrayListener {
       }
 
       calloc.free(className);
-    } catch (e) {}
+    } catch (_) {
+      // FFI menu detection may fail
+    }
 
     _stopMenuMonitor();
   }

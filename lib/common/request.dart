@@ -149,19 +149,9 @@ class Request {
       );
       final tmpFile = File(tmpPath);
       if (!await tmpFile.exists()) return 'Download failed';
-      final targetFile = File(targetPath);
-      for (var attempt = 0; attempt < 10; attempt++) {
-        try {
-          if (await targetFile.exists()) await targetFile.delete();
-          break;
-        } catch (_) {
-          await Future.delayed(const Duration(milliseconds: 500));
-        }
-      }
+      final target = File(targetPath);
+      if (await target.exists()) await target.delete();
       await tmpFile.rename(targetPath);
-      if (!Platform.isWindows) {
-        await Process.run('chmod', ['+x', targetPath]);
-      }
       return null;
     } catch (e) {
       return e.toString();

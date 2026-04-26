@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 class ClashMessage {
 
+  // ignore: unused_field
   late final StreamSubscription _subscription;
 
   ClashMessage._() {

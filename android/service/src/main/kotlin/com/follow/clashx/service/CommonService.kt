@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
 import com.follow.clashx.common.GlobalState
+import com.follow.clashx.common.promoteToForeground
 import com.follow.clashx.service.models.VpnOptions
 import com.follow.clashx.service.modules.NetworkObserveModule
 import com.follow.clashx.service.modules.NotificationModule
@@ -24,14 +25,12 @@ class CommonService : Service(), IBaseService {
 
     override fun onCreate() {
         super.onCreate()
-        promoteToForeground()
+        startForegroundCompat()
         handleCreate()
     }
 
-    private fun promoteToForeground() {
-        com.follow.clashx.common.promoteToForeground(
-            com.follow.clashx.service.R.drawable.ic_notification,
-        )
+    private fun startForegroundCompat() {
+        promoteToForeground(R.drawable.ic_notification)
     }
 
     override fun onBind(intent: Intent?): IBinder = binder

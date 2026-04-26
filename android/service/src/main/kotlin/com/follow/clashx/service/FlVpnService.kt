@@ -9,6 +9,7 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import com.follow.clashx.common.GlobalState
 import com.follow.clashx.common.SavedParams
+import com.follow.clashx.common.promoteToForeground
 import com.follow.clashx.core.Core
 import com.follow.clashx.core.InvokeInterface
 import com.follow.clashx.service.models.VpnOptions
@@ -40,13 +41,13 @@ class FlVpnService : VpnService(), IBaseService {
 
     override fun onCreate() {
         super.onCreate()
-        promoteToForeground()
+        startForegroundCompat()
         handleCreate()
     }
 
-    private fun promoteToForeground() {
-        com.follow.clashx.common.promoteToForeground(
-            com.follow.clashx.service.R.drawable.ic_notification,
+    private fun startForegroundCompat() {
+        promoteToForeground(
+            R.drawable.ic_notification,
             SavedParams.loadNotificationTitle(),
         )
     }

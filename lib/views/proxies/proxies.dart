@@ -10,7 +10,6 @@ import 'package:flclashx/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'common.dart';
 import 'setting.dart';
 import 'tab.dart';
 

@@ -15,7 +15,7 @@ import 'package:flclashx/widgets/dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
+
 import 'package:path/path.dart' hide windows;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -143,6 +143,7 @@ class AppController {
 
   Future<void> restartCore() async {
     commonPrint.log("restart core");
+    await _applyPendingCoreUpdate();
     await clashService?.reStart();
     await _initCore();
     if (_ref.read(runTimeProvider.notifier).isStart) {
@@ -416,9 +417,6 @@ class AppController {
 
     if (profile.id == _ref.read(currentProfileIdProvider)) {
       applyProfileDebounce(silence: true);
-      unawaited(_updateGeoFilesAfterProfileUpdate().catchError((e) {
-        commonPrint.log("Error updating geo files: $e");
-      }));
     }
 
     // Check subscription expiration and show notification if needed
@@ -493,176 +491,6 @@ class AppController {
           ),
         ),
       );
-    }
-  }
-
-  Future<Map<String, String>?> _getRemoteFileMetadata(String url) async {
-    try {
-      final response = await http.head(Uri.parse(url.normalizeUrlCredentials)).timeout(
-            const Duration(seconds: 10),
-          );
-
-      if (response.statusCode != 200) {
-        return null;
-      }
-
-      final metadata = <String, String>{};
-
-      final etag = response.headers['etag'];
-      if (etag != null && etag.isNotEmpty) {
-        metadata['etag'] = etag;
-      }
-
-      final lastModified = response.headers['last-modified'];
-      if (lastModified != null && lastModified.isNotEmpty) {
-        metadata['last-modified'] = lastModified;
-      }
-
-      final contentLength = response.headers['content-length'];
-      if (contentLength != null && contentLength.isNotEmpty) {
-        metadata['content-length'] = contentLength;
-      }
-
-      return metadata.isEmpty ? null : metadata;
-    } catch (e) {
-      commonPrint.log("Failed to get remote file metadata for $url: $e");
-      return null;
-    }
-  }
-
-  String _getMetadataKey(String profileId, String key) =>
-      'geo_metadata_${profileId}_$key';
-
-  Future<Map<String, String>?> _getSavedMetadata(
-      String profileId, String key) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final storageKey = _getMetadataKey(profileId, key);
-      final jsonString = prefs.getString(storageKey);
-      if (jsonString == null) return null;
-      return Map<String, String>.from(json.decode(jsonString));
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<void> _saveMetadata(
-      String profileId, String key, Map<String, String> metadata) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final storageKey = _getMetadataKey(profileId, key);
-      await prefs.setString(storageKey, json.encode(metadata));
-    } catch (e) {
-      commonPrint.log("Failed to save metadata for $key: $e");
-    }
-  }
-
-  bool _hasMetadataChanged(
-      Map<String, String>? oldMeta, Map<String, String>? newMeta) {
-    if (oldMeta == null || newMeta == null) return true;
-
-    if (newMeta['etag'] != null && oldMeta['etag'] != null) {
-      return newMeta['etag'] != oldMeta['etag'];
-    }
-
-    if (newMeta['last-modified'] != null && oldMeta['last-modified'] != null) {
-      return newMeta['last-modified'] != oldMeta['last-modified'];
-    }
-
-    if (newMeta['content-length'] != null &&
-        oldMeta['content-length'] != null) {
-      return newMeta['content-length'] != oldMeta['content-length'];
-    }
-
-    return true;
-  }
-
-  Future<void> _updateGeoFilesAfterProfileUpdate(
-      {bool forceUpdate = false}) async {
-    try {
-      final currentProfileId = _ref.read(currentProfileIdProvider);
-      if (currentProfileId == null) return;
-
-      final profileConfig =
-          await globalState.getProfileConfig(currentProfileId);
-
-      final geodataMode = profileConfig["geodata-mode"];
-      if (geodataMode != true) {
-        commonPrint.log(
-            "Geodata updates are disabled by profile (geodata-mode != true)");
-        return;
-      }
-
-      final geoXUrl = profileConfig["geox-url"];
-
-      if (geoXUrl == null || geoXUrl is! Map) {
-        commonPrint.log("No geox-url found in profile config");
-        return;
-      }
-
-      final geoFiles = [
-        {'type': 'GeoIp', 'name': geoIpFileName, 'key': 'geoip'},
-        {'type': 'MMDB', 'name': mmdbFileName, 'key': 'mmdb'},
-        {'type': 'GeoSite', 'name': geoSiteFileName, 'key': 'geosite'},
-        {'type': 'ASN', 'name': asnFileName, 'key': 'asn'},
-      ];
-
-      // Counters for logging purposes (values used in log messages via increment)
-      // ignore: unused_local_variable
-      var updatedCount = 0;
-      // ignore: unused_local_variable
-      var skippedCount = 0;
-
-      for (final geoFile in geoFiles) {
-        final geoType = geoFile['type']!;
-        final fileName = geoFile['name']!;
-        final key = geoFile['key']!;
-
-        final url = geoXUrl[key];
-        if (url == null || url is! String || url.isEmpty) {
-          commonPrint.log("No URL for $fileName, skipping");
-          continue;
-        }
-
-        try {
-          final remoteMetadata = await _getRemoteFileMetadata(url);
-          if (remoteMetadata == null) {
-            commonPrint.log("Failed to get metadata for $fileName from $url");
-            continue;
-          }
-
-          final savedMetadata = await _getSavedMetadata(currentProfileId, key);
-
-          if (!forceUpdate &&
-              !_hasMetadataChanged(savedMetadata, remoteMetadata)) {
-            commonPrint.log(
-                "$fileName is up to date for profile $currentProfileId, skipping download");
-            skippedCount++;
-            continue;
-          }
-
-          final reason = forceUpdate ? "force update" : "metadata changed";
-          commonPrint.log(
-              "$fileName needs update for profile $currentProfileId ($reason), downloading from $url...");
-          final result = await clashCore.updateGeoData(
-            UpdateGeoDataParams(geoType: geoType, geoName: fileName),
-          );
-
-          if (result.isNotEmpty) {
-            commonPrint.log("Failed to update $fileName: $result");
-            continue;
-          }
-
-          await _saveMetadata(currentProfileId, key, remoteMetadata);
-          commonPrint.log(
-              "$fileName was successfully updated for profile $currentProfileId from $url");
-          updatedCount++;
-        } catch (e) {
-          commonPrint.log("Failed to update $fileName: $e");
-        }
-      }
-    } catch (e) {
-      commonPrint.log("Failed to update geo files after profile update: $e");
     }
   }
 
@@ -883,11 +711,6 @@ class AppController {
     globalState.cacheHeightMap = {};
     globalState.cacheScrollPosition = {};
 
-    if (currentProfileId != null) {
-      _updateGeoFilesAfterProfileUpdate(forceUpdate: true).catchError((e) {
-        commonPrint.log("Error updating geo files on profile change: $e");
-      });
-    }
   }
 
   void updateBrightness(Brightness brightness) {
@@ -1205,7 +1028,34 @@ class AppController {
     await handleExit();
   }
 
+  Future<void> _applyPendingCoreUpdate() async {
+    final pending = File(appPath.corePendingPath);
+    if (!await pending.exists()) return;
+    commonPrint.log("Applying pending core update...");
+    try {
+      final target = File(appPath.corePath);
+      if (await target.exists()) {
+        for (var i = 0; i < 10; i++) {
+          try {
+            await target.delete();
+            break;
+          } catch (_) {
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
+        }
+      }
+      await pending.rename(appPath.corePath);
+      if (!Platform.isWindows) {
+        await Process.run('chmod', ['+x', appPath.corePath]);
+      }
+      commonPrint.log("Pending core update applied successfully");
+    } catch (e) {
+      commonPrint.log("Failed to apply pending core update: $e");
+    }
+  }
+
   Future<void> _initCore() async {
+    await _applyPendingCoreUpdate();
     final isInit = await clashCore.isInit;
     if (!isInit) {
       await clashCore.init();

@@ -205,16 +205,16 @@ class Build {
     return sha256.convert(await stream.reduce((a, b) => a + b)).toString();
   }
 
-  /// Reads [core/constant/version.go] (single source of truth for mihomo version).
+  /// Reads mihomo version from [core/go.mod] (single source of truth).
   static Future<String> extractCoreVersion() async {
-    final versionFile = File(join("core", "constant", "version.go"));
-    if (!await versionFile.exists()) {
-      throw "core/constant/version.go file not found";
+    final goMod = File(join("core", "go.mod"));
+    if (!await goMod.exists()) {
+      throw "core/go.mod file not found";
     }
-    final content = await versionFile.readAsString();
-    final match = RegExp(r'Version\s*=\s*"([^"]+)"').firstMatch(content);
+    final content = await goMod.readAsString();
+    final match = RegExp(r'github\.com/metacubex/mihomo\s+(v[\d.]+)').firstMatch(content);
     if (match == null) {
-      throw "Could not extract Version from core/constant/version.go";
+      throw "Could not extract mihomo version from core/go.mod";
     }
     return match.group(1)!;
   }

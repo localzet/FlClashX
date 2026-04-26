@@ -112,8 +112,12 @@ class Windows {
             flushMenuThemes();
           }
         }
-      } catch (e) {}
-    } catch (e) {}
+      } catch (_) {
+      // FFI call may fail on unsupported Windows versions
+    }
+    } catch (_) {
+      // FFI call may fail on unsupported Windows versions
+    }
   }
 
   void applyDarkModeToMenu(int hwnd) {
@@ -132,12 +136,16 @@ class Windows {
                 Pointer<Utf16> pszSubIdList)>('SetWindowTheme');
 
         setWindowTheme(hwnd, themeName, nullptr);
-      } catch (e) {}
+      } catch (_) {
+      // FFI call may fail on unsupported Windows versions
+    }
 
       if (themeName != nullptr) {
         calloc.free(themeName);
       }
-    } catch (e) {}
+    } catch (_) {
+      // FFI call may fail on unsupported Windows versions
+    }
   }
 
   bool runas(String command, String arguments) {
