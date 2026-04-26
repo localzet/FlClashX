@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 
 class ClashMessage {
 
+  late final StreamSubscription _subscription;
+
   ClashMessage._() {
-    controller.stream.listen(
+    _subscription = controller.stream.listen(
       (message) {
         if (message.isEmpty) {
           return;

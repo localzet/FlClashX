@@ -59,7 +59,12 @@ object SavedParams {
 
     private fun writeAtomic(target: File, content: String) {
         val tmp = File(target.parentFile, "${target.name}.tmp")
-        FileOutputStream(tmp).use { it.write(content.toByteArray(Charsets.UTF_8)); it.fd.sync() }
-        tmp.renameTo(target)
+        FileOutputStream(tmp).use {
+            it.write(content.toByteArray(Charsets.UTF_8))
+            it.fd.sync()
+        }
+        if (!tmp.renameTo(target)) {
+            tmp.delete()
+        }
     }
 }

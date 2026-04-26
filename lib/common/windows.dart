@@ -27,58 +27,27 @@ class Windows {
 
   bool isDarkMode() {
     try {
-      final keyPath =
-          r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-              .toNativeUtf16();
-      final valueName = 'AppsUseLightTheme'.toNativeUtf16();
+      return using((arena) {
+        final keyPath =
+            r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+                .toNativeUtf16(allocator: arena);
+        final valueName = 'AppsUseLightTheme'.toNativeUtf16(allocator: arena);
+        final phkResult = arena<HKEY>();
 
-      final phkResult = calloc<HKEY>();
-      var result = RegOpenKeyEx(
-        HKEY_CURRENT_USER,
-        keyPath,
-        0,
-        KEY_READ,
-        phkResult,
-      );
+        var result = RegOpenKeyEx(HKEY_CURRENT_USER, keyPath, 0, KEY_READ, phkResult);
+        if (result != ERROR_SUCCESS) return false;
 
-      calloc.free(keyPath);
+        final hKey = phkResult.value;
+        final data = arena<DWORD>();
+        final dataSize = arena<DWORD>();
+        dataSize.value = sizeOf<DWORD>();
 
-      if (result != ERROR_SUCCESS) {
-        calloc.free(valueName);
-        calloc.free(phkResult);
-        return false;
-      }
+        result = RegQueryValueEx(hKey, valueName, nullptr, nullptr, data.cast(), dataSize);
+        RegCloseKey(hKey);
+        if (result != ERROR_SUCCESS) return false;
 
-      final hKey = phkResult.value;
-      calloc.free(phkResult);
-
-      final data = calloc<DWORD>();
-      final dataSize = calloc<DWORD>();
-      dataSize.value = sizeOf<DWORD>();
-
-      result = RegQueryValueEx(
-        hKey,
-        valueName,
-        nullptr,
-        nullptr,
-        data.cast(),
-        dataSize,
-      );
-
-      calloc.free(valueName);
-      RegCloseKey(hKey);
-
-      if (result != ERROR_SUCCESS) {
-        calloc.free(data);
-        calloc.free(dataSize);
-        return false;
-      }
-
-      final isLightMode = data.value != 0;
-      calloc.free(data);
-      calloc.free(dataSize);
-
-      return !isLightMode;
+        return data.value == 0;
+      });
     } catch (e) {
       return false;
     }

@@ -35,9 +35,11 @@ var (
 	isRunning         = false
 	runLock           sync.Mutex
 	mBatch, _         = batch.New[bool](context.Background(), batch.WithConcurrencyNum[bool](50))
+	proxyDescMu       sync.RWMutex
 	proxyDescriptions = map[string]string{}
-	pendingTunEnable  = false
-	currentTestURL    = "https://www.gstatic.com/generate_204"
+	pendingTunEnable      = false
+	currentTestURL        = "https://www.gstatic.com/generate_204"
+	minHealthCheckInterval = 5 * time.Second
 )
 
 type ExternalProviders []ExternalProvider
@@ -59,6 +61,31 @@ func proxiesWithProviders() map[string]constant.Proxy {
 		}
 	}
 	return allProxies
+}
+
+func computeMinHealthCheckInterval(rawConfig *config.RawConfig) {
+	min := 300
+	for _, g := range rawConfig.ProxyGroup {
+		var iv int
+		switch v := g["interval"].(type) {
+		case int:
+			iv = v
+		case float64:
+			iv = int(v)
+		case json.Number:
+			iv64, _ := v.Int64()
+			iv = int(iv64)
+		}
+		if iv > 0 && iv < min {
+			min = iv
+		}
+	}
+	d := time.Duration(min) * time.Second
+	if d < 5*time.Second {
+		d = 5 * time.Second
+	}
+	log.Infoln("[HealthCheck] computed min interval from %d groups: %s", len(rawConfig.ProxyGroup), d)
+	minHealthCheckInterval = d
 }
 
 // extractProxyDescriptionsFromRaw caches custom server descriptions by proxy name.
@@ -91,7 +118,9 @@ func extractProxyDescriptionsFromRaw(rawConfig *config.RawConfig) {
 		}
 		descriptions[name] = description
 	}
+	proxyDescMu.Lock()
 	proxyDescriptions = descriptions
+	proxyDescMu.Unlock()
 }
 
 // proxiesWithDescriptions injects serverDescription for each proxy in API response.
@@ -106,7 +135,10 @@ func proxiesWithDescriptions() map[string]interface{} {
 		if err := json.Unmarshal(data, &item); err != nil {
 			continue
 		}
-		if desc, ok := proxyDescriptions[name]; ok && desc != "" {
+		proxyDescMu.RLock()
+		desc, hasDesc := proxyDescriptions[name]
+		proxyDescMu.RUnlock()
+		if hasDesc && desc != "" {
 			item["serverDescription"] = desc
 		}
 		result[name] = item
@@ -274,6 +306,9 @@ func readFile(path string) ([]byte, error) {
 func updateConfig(params *UpdateParams) {
 	runLock.Lock()
 	defer runLock.Unlock()
+	if currentConfig == nil {
+		return
+	}
 	general := currentConfig.General
 	if params.MixedPort != nil {
 		general.MixedPort = *params.MixedPort
@@ -323,11 +358,21 @@ func updateConfig(params *UpdateParams) {
 	if params.Tun != nil {
 		general.Tun.Enable = params.Tun.Enable
 		pendingTunEnable = params.Tun.Enable
-		general.Tun.AutoRoute = *params.Tun.AutoRoute
-		general.Tun.Device = *params.Tun.Device
-		general.Tun.RouteAddress = *params.Tun.RouteAddress
-		general.Tun.DNSHijack = *params.Tun.DNSHijack
-		general.Tun.Stack = *params.Tun.Stack
+		if params.Tun.AutoRoute != nil {
+			general.Tun.AutoRoute = *params.Tun.AutoRoute
+		}
+		if params.Tun.Device != nil {
+			general.Tun.Device = *params.Tun.Device
+		}
+		if params.Tun.RouteAddress != nil {
+			general.Tun.RouteAddress = *params.Tun.RouteAddress
+		}
+		if params.Tun.DNSHijack != nil {
+			general.Tun.DNSHijack = *params.Tun.DNSHijack
+		}
+		if params.Tun.Stack != nil {
+			general.Tun.Stack = *params.Tun.Stack
+		}
 	}
 
 	updateListeners()
@@ -339,6 +384,7 @@ func setupConfig(params *SetupParams) error {
 	var err error
 
 	extractProxyDescriptionsFromRaw(params.Config)
+	computeMinHealthCheckInterval(params.Config)
 	resetHealthCheckForwarderState()
 	if params.TestURL != "" {
 		currentTestURL = params.TestURL

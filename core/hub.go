@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter"
@@ -34,8 +35,10 @@ var (
 	externalProviders   = map[string]cp.Provider{}
 	logSubscriber       observable.Subscription[log.Event]
 	healthCheckStopCh   chan struct{}
+	healthCheckMu       sync.Mutex
 	healthCheckSeen     = map[string]string{}
 	requestStopCh       chan struct{}
+	requestMu           sync.Mutex
 	requestSeen         = map[string]bool{}
 )
 
@@ -119,12 +122,18 @@ func handleShutdown() bool {
 }
 
 func startHealthCheckForwarder() {
-	if healthCheckStopCh != nil {
-		return
-	}
+	stopHealthCheckForwarder()
 	healthCheckStopCh = make(chan struct{})
 	go func(stopCh chan struct{}) {
-		ticker := time.NewTicker(2 * time.Second)
+		interval := minHealthCheckInterval
+		log.Infoln("[HealthCheck] forwarder interval: %s", interval)
+		select {
+		case <-time.After(3 * time.Second):
+			forwardHealthCheckDelays()
+		case <-stopCh:
+			return
+		}
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -146,7 +155,9 @@ func stopHealthCheckForwarder() {
 }
 
 func resetHealthCheckForwarderState() {
+	healthCheckMu.Lock()
 	healthCheckSeen = map[string]string{}
+	healthCheckMu.Unlock()
 }
 
 func forwardHealthCheckDelays() {
@@ -206,10 +217,12 @@ func startRequestForwarder() {
 	if requestStopCh != nil {
 		return
 	}
+	requestMu.Lock()
 	requestSeen = map[string]bool{}
+	requestMu.Unlock()
 	requestStopCh = make(chan struct{})
 	go func(stopCh chan struct{}) {
-		ticker := time.NewTicker(500 * time.Millisecond)
+		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -228,10 +241,14 @@ func stopRequestForwarder() {
 	}
 	close(requestStopCh)
 	requestStopCh = nil
+	requestMu.Lock()
 	requestSeen = map[string]bool{}
+	requestMu.Unlock()
 }
 
 func forwardNewRequests() {
+	requestMu.Lock()
+	defer requestMu.Unlock()
 	alive := make(map[string]bool, len(requestSeen))
 	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
 		id := c.ID()
@@ -246,8 +263,6 @@ func forwardNewRequests() {
 		})
 		return true
 	})
-	// Drop ids that were closed so short-lived reused ids do not accumulate
-	// and a later reconnection with the same id can still be reported.
 	for id := range requestSeen {
 		if !alive[id] {
 			delete(requestSeen, id)
@@ -262,10 +277,13 @@ func emitLatestDelay(proxyName string, testURL string, history []constant.DelayH
 	latest := history[len(history)-1]
 	key := proxyName + "|" + testURL
 	signature := fmt.Sprintf("%d:%d", latest.Time.UnixNano(), latest.Delay)
+	healthCheckMu.Lock()
 	if healthCheckSeen[key] == signature {
+		healthCheckMu.Unlock()
 		return
 	}
 	healthCheckSeen[key] = signature
+	healthCheckMu.Unlock()
 
 	delayValue := int32(latest.Delay)
 	if latest.Delay == 0 {
@@ -305,6 +323,10 @@ func handleChangeProxy(data string, fn func(string string)) {
 			fn(err.Error())
 			return
 		}
+		if params.GroupName == nil || params.ProxyName == nil {
+			fn("missing group-name or proxy-name")
+			return
+		}
 		groupName := *params.GroupName
 		proxyName := *params.ProxyName
 		proxies := proxiesWithProviders()
@@ -313,7 +335,11 @@ func handleChangeProxy(data string, fn func(string string)) {
 			fn("Not found group")
 			return
 		}
-		adapterProxy := group.(*adapter.Proxy)
+		adapterProxy, ok := group.(*adapter.Proxy)
+		if !ok {
+			fn("Group is not a proxy adapter")
+			return
+		}
 		selector, ok := adapterProxy.ProxyAdapter.(outboundgroup.SelectAble)
 		if !ok {
 			fn("Group is not selectable")
@@ -342,7 +368,7 @@ func handleGetTraffic() string {
 	}
 	data, err := json.Marshal(traffic)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Errorln("Error: %v", err)
 		return ""
 	}
 	return string(data)
@@ -356,7 +382,7 @@ func handleGetTotalTraffic() string {
 	}
 	data, err := json.Marshal(traffic)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Errorln("Error: %v", err)
 		return ""
 	}
 	return string(data)
@@ -433,7 +459,7 @@ func handleGetConnections() string {
 	snapshot := statistic.DefaultManager.Snapshot()
 	data, err := json.Marshal(snapshot)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Errorln("Error: %v", err)
 		return ""
 	}
 	return string(data)
@@ -535,7 +561,9 @@ func handleUpdateGeoData(geoType string, geoName string, fn func(value string)) 
 
 func handleUpdateExternalProvider(providerName string, fn func(value string)) {
 	go func() {
+		runLock.Lock()
 		externalProvider, exist := externalProviders[providerName]
+		runLock.Unlock()
 		if !exist {
 			fn("external provider is not exist")
 			return
@@ -567,14 +595,19 @@ func handleSideLoadExternalProvider(providerName string, data []byte, fn func(va
 	}()
 }
 
+var logMu sync.Mutex
+
 func handleStartLog() {
+	logMu.Lock()
+	defer logMu.Unlock()
 	if logSubscriber != nil {
 		log.UnSubscribe(logSubscriber)
 		logSubscriber = nil
 	}
 	logSubscriber = log.Subscribe()
+	sub := logSubscriber
 	go func() {
-		for logData := range logSubscriber {
+		for logData := range sub {
 			if logData.LogLevel < log.Level() {
 				continue
 			}
@@ -591,6 +624,8 @@ func handleStartLog() {
 }
 
 func handleStopLog() {
+	logMu.Lock()
+	defer logMu.Unlock()
 	if logSubscriber != nil {
 		log.UnSubscribe(logSubscriber)
 		logSubscriber = nil
@@ -617,7 +652,9 @@ func handleGetMemory(fn func(value string)) {
 }
 
 func handleSetState(params string) {
-	_ = json.Unmarshal([]byte(params), state.CurrentState)
+	if err := json.Unmarshal([]byte(params), state.CurrentState); err != nil {
+		log.Warnln("[State] unmarshal failed: %v", err)
+	}
 }
 
 func handleGetConfig(path string) (*config.RawConfig, error) {

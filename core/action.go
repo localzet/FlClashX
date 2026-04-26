@@ -122,6 +122,7 @@ func handleAction(action *Action, result ActionResult) {
 	case getExternalProviderMethod:
 		externalProviderName := action.Data.(string)
 		result.success(handleGetExternalProvider(externalProviderName))
+		return
 	case updateGeoDataMethod:
 		paramsString := action.Data.(string)
 		var params = map[string]string{}
@@ -185,6 +186,7 @@ func handleAction(action *Action, result ActionResult) {
 		data := action.Data.(string)
 		handleSetState(data)
 		result.success(true)
+		return
 	case healthCheckMethod:
 		groupName, _ := action.Data.(string)
 		handleHealthCheck(groupName, func(value string) {

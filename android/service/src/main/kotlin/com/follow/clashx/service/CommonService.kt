@@ -29,29 +29,9 @@ class CommonService : Service(), IBaseService {
     }
 
     private fun promoteToForeground() {
-        val channelId = com.follow.clashx.common.GlobalState.NOTIFICATION_CHANNEL
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val mgr = getSystemService(android.content.Context.NOTIFICATION_SERVICE)
-                as android.app.NotificationManager
-            if (mgr.getNotificationChannel(channelId) == null) {
-                mgr.createNotificationChannel(
-                    android.app.NotificationChannel(
-                        channelId, "FlClashX",
-                        android.app.NotificationManager.IMPORTANCE_LOW,
-                    )
-                )
-            }
-        }
-        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(com.follow.clashx.service.R.drawable.ic_notification)
-            .setContentTitle("FlClashX")
-            .setOngoing(true)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
-            .build()
-        val fgType = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else 0
-        startForeground(com.follow.clashx.common.GlobalState.NOTIFICATION_ID, notification, fgType)
+        com.follow.clashx.common.promoteToForeground(
+            com.follow.clashx.service.R.drawable.ic_notification,
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -61,7 +41,7 @@ class CommonService : Service(), IBaseService {
     }
 
     override fun onDestroy() {
-        kotlinx.coroutines.runBlocking { runCatching { loader.stop() } }
+        runCatching { kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { loader.stop() } }
         handleDestroy()
         super.onDestroy()
     }

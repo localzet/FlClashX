@@ -28,7 +28,6 @@ import 'views/profiles/override_profile.dart';
 class AppController {
   AppController(this.context, WidgetRef ref) : _ref = ref;
   int? lastProfileModified;
-  Timer? _profileUpdateTimer;
   final BuildContext context;
   final WidgetRef _ref;
 
@@ -1033,7 +1032,6 @@ class AppController {
   }
 
   Future<void> handleExit() async {
-    _profileUpdateTimer?.cancel();
     Future.delayed(commonDuration, system.exit);
     try {
       await savePreferences();

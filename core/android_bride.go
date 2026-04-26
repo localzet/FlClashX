@@ -53,6 +53,7 @@ import (
 )
 
 var (
+	callbacksMu     sync.RWMutex
 	globalCallbacks struct {
 		releaseObjectFunc  C.release_object_func
 		protectFunc        C.protect_func
@@ -66,58 +67,65 @@ var (
 )
 
 func Protect(callback unsafe.Pointer, fd int) {
-	if globalCallbacks.protectFunc != nil {
-		C.protect(globalCallbacks.protectFunc, callback, C.int(fd))
+	callbacksMu.RLock()
+	fn := globalCallbacks.protectFunc
+	callbacksMu.RUnlock()
+	if fn != nil {
+		C.protect(fn, callback, C.int(fd))
 	}
 }
 
 func ResolveProcess(callback unsafe.Pointer, protocol int, source, target string, uid int) string {
-	if globalCallbacks.resolveProcessFunc == nil {
+	callbacksMu.RLock()
+	fn := globalCallbacks.resolveProcessFunc
+	callbacksMu.RUnlock()
+	if fn == nil {
 		return ""
 	}
 	s := C.CString(source)
 	defer C.free(unsafe.Pointer(s))
 	t := C.CString(target)
 	defer C.free(unsafe.Pointer(t))
-	res := C.resolve_process(globalCallbacks.resolveProcessFunc, callback, C.int(protocol), s, t, C.int(uid))
+	res := C.resolve_process(fn, callback, C.int(protocol), s, t, C.int(uid))
 	defer C.free(unsafe.Pointer(res))
 	return C.GoString(res)
 }
 
 func releaseObject(callback unsafe.Pointer) {
-	if globalCallbacks.releaseObjectFunc == nil {
+	callbacksMu.RLock()
+	fn := globalCallbacks.releaseObjectFunc
+	callbacksMu.RUnlock()
+	if fn == nil {
 		return
 	}
-	C.release_object(globalCallbacks.releaseObjectFunc, callback)
+	C.release_object(fn, callback)
 }
 
-// invokeCallback delivers a JSON-encoded ActionResult back to the Kotlin
-// side through the registered invoke_callback_func. The callback pointer is
-// the caller-provided binder object; it must have been acquired with a
-// retain/strong reference on the JVM side so it outlives this call, and
-// release is the caller's responsibility.
 func invokeCallback(callback unsafe.Pointer, data string) {
-	if globalCallbacks.invokeCallbackFunc == nil || callback == nil {
+	callbacksMu.RLock()
+	fn := globalCallbacks.invokeCallbackFunc
+	callbacksMu.RUnlock()
+	if fn == nil || callback == nil {
 		return
 	}
 	s := C.CString(data)
 	defer C.free(unsafe.Pointer(s))
-	C.invoke_callback(globalCallbacks.invokeCallbackFunc, callback, s)
+	C.invoke_callback(fn, callback, s)
 }
 
-// emitEvent pushes an out-of-band message (log line, delay update, request)
-// to the currently registered event listener. Events are dropped silently
-// when no listener is attached.
 func emitEvent(data string) {
 	eventListenerMu.Lock()
 	listener := eventListener
 	eventListenerMu.Unlock()
-	if globalCallbacks.eventListenerFunc == nil || listener == nil {
+	callbacksMu.RLock()
+	fn := globalCallbacks.eventListenerFunc
+	callbacksMu.RUnlock()
+	if fn == nil || listener == nil {
 		return
 	}
 	s := C.CString(data)
 	defer C.free(unsafe.Pointer(s))
-	C.dispatch_event(globalCallbacks.eventListenerFunc, listener, s)
+	C.dispatch_event(fn, listener, s)
 }
 
 //export registerCallbacks
@@ -128,11 +136,13 @@ func registerCallbacks(
 	resolveProcessFunc C.resolve_process_func,
 	releaseObjectFunc C.release_object_func,
 ) {
+	callbacksMu.Lock()
 	globalCallbacks.invokeCallbackFunc = invokeCallbackFunc
 	globalCallbacks.eventListenerFunc = eventListenerFunc
 	globalCallbacks.protectFunc = markSocketFunc
 	globalCallbacks.resolveProcessFunc = resolveProcessFunc
 	globalCallbacks.releaseObjectFunc = releaseObjectFunc
+	callbacksMu.Unlock()
 }
 
 //export setEventListener

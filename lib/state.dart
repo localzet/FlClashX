@@ -129,7 +129,7 @@ class GlobalState {
       this.tasks = tasks;
     }
     await executorUpdateTask();
-    timer = Timer(const Duration(seconds: 1), () async {
+    timer = Timer(const Duration(seconds: 3), () async {
       startUpdateTasks();
     });
   }
@@ -690,6 +690,7 @@ class DetectionState {
         state.value.ipInfo != null) {
       return;
     }
+    final justStarted = _preIsStart == false && isStart;
     _clearSetTimeoutTimer();
     state.value = state.value.copyWith(
       isLoading: true,
@@ -699,6 +700,9 @@ class DetectionState {
     if (cancelToken != null) {
       cancelToken!.cancel();
       cancelToken = null;
+    }
+    if (justStarted) {
+      await Future.delayed(const Duration(milliseconds: 2000));
     }
     cancelToken = CancelToken();
     state.value = state.value.copyWith(

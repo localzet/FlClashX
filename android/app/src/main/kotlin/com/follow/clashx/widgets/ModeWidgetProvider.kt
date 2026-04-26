@@ -28,7 +28,6 @@ class ModeWidgetProvider : AppWidgetProvider() {
         private var observersAttached = false
 
         private val runStateObserver = Observer<RunState> { _ ->
-            GlobalState.flutterEngine?.let { }
             refreshAll()
         }
         private val modeObserver = Observer<String> { _ -> refreshAll() }

@@ -10,7 +10,6 @@ import (
 	t "core/tun"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/process"
 	"github.com/metacubex/mihomo/constant"
@@ -175,7 +174,7 @@ func handleGetAndroidVpnOptions() string {
 	}
 	data, err := json.Marshal(options)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Errorln("Error: %v", err)
 		return ""
 	}
 	return string(data)

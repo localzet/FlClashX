@@ -52,6 +52,35 @@ fun Context.sendInternalBroadcast(action: String) {
 }
 
 
+fun Service.ensureNotificationChannel() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val mgr = getSystemService(android.content.Context.NOTIFICATION_SERVICE)
+            as android.app.NotificationManager
+        if (mgr.getNotificationChannel(GlobalState.NOTIFICATION_CHANNEL) == null) {
+            mgr.createNotificationChannel(
+                android.app.NotificationChannel(
+                    GlobalState.NOTIFICATION_CHANNEL, "FlClashX",
+                    android.app.NotificationManager.IMPORTANCE_LOW,
+                )
+            )
+        }
+    }
+}
+
+fun Service.promoteToForeground(iconRes: Int, title: String = "FlClashX") {
+    ensureNotificationChannel()
+    val notification = androidx.core.app.NotificationCompat.Builder(this, GlobalState.NOTIFICATION_CHANNEL)
+        .setSmallIcon(iconRes)
+        .setContentTitle(title)
+        .setOngoing(true)
+        .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+        .build()
+    val fgType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+    } else 0
+    startForeground(GlobalState.NOTIFICATION_ID, notification, fgType)
+}
+
 fun Service.startForeground(id: Int, notification: Notification, foregroundServiceType: Int = 0) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && foregroundServiceType != 0) {
         ServiceCompat.startForeground(this, id, notification, foregroundServiceType)

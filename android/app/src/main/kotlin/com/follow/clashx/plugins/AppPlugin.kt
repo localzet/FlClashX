@@ -220,7 +220,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
             }
 
             "openFile" -> {
-                val path = call.argument<String>("path")!!
+                val path = call.argument<String>("path") ?: run { result.success(false); return }
                 openFile(path)
                 result.success(true)
             }
@@ -263,7 +263,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
         try {
             activityRef?.get()?.startActivity(intent)
         } catch (e: Exception) {
-            println(e)
+            android.util.Log.w("AppPlugin", "openFile failed", e)
         }
     }
 
@@ -423,6 +423,8 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                             DexBackedDexFile.fromInputStream(null, input)
                         } catch (e: Exception) {
                             return false
+                        } finally {
+                            input.close()
                         }
                         for (clazz in dexFile.classes) {
                             val clazzName =

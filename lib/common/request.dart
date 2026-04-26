@@ -20,18 +20,6 @@ class Request {
         },
       ),
     );
-    _directDio = Dio(
-      BaseOptions(
-        headers: {
-          "User-Agent": browserUa,
-        },
-      ),
-    );
-    _directDio.httpClientAdapter = IOHttpClientAdapter(createHttpClient: () {
-      final client = HttpClient();
-      client.findProxy = (_) => "DIRECT";
-      return client;
-    });
     _clashDio = Dio();
     _clashDio.httpClientAdapter = IOHttpClientAdapter(createHttpClient: () {
       final client = HttpClient();
@@ -43,20 +31,18 @@ class Request {
     });
   }
   late final Dio _dio;
-  late final Dio _directDio;
   late final Dio _clashDio;
   String? userAgent;
 
   Future<Response<Uint8List>> getFileResponseForUrl(
     String rawUrl, {
     Map<String, dynamic>? headers,
-    bool direct = false,
   }) async {
     final url = rawUrl.normalizeUrlCredentials;
     final requestHeaders = headers ?? {};
     requestHeaders['User-Agent'] = globalState.ua;
 
-    final dio = direct ? _directDio : _dio;
+    final dio = _dio;
 
     final firstResponse = await dio.get<Uint8List>(
       url,
@@ -211,8 +197,10 @@ class Request {
         }
       }).catchError((e) {
         failureCount++;
-        if (e == DioExceptionType.cancel) {
+        if (e is DioException && e.type == DioExceptionType.cancel) {
           completer.complete(Result.error("cancelled"));
+        } else if (failureCount == _ipInfoSources.length) {
+          completer.complete(Result.success(null));
         }
       });
       return completer.future;

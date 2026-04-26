@@ -45,7 +45,8 @@ func startServer(arg string) {
 		conn, err = net.Dial("tcp", fmt.Sprintf("127.0.0.1:%s", arg))
 	}
 	if err != nil {
-		panic(err.Error())
+		fmt.Printf("startServer: connection failed: %v\n", err)
+		return
 	}
 
 	defer func(conn net.Conn) {

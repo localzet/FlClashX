@@ -45,34 +45,14 @@ class FlVpnService : VpnService(), IBaseService {
     }
 
     private fun promoteToForeground() {
-        val channelId = com.follow.clashx.common.GlobalState.NOTIFICATION_CHANNEL
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val mgr = getSystemService(android.content.Context.NOTIFICATION_SERVICE)
-                as android.app.NotificationManager
-            if (mgr.getNotificationChannel(channelId) == null) {
-                mgr.createNotificationChannel(
-                    android.app.NotificationChannel(
-                        channelId, "FlClashX",
-                        android.app.NotificationManager.IMPORTANCE_LOW,
-                    )
-                )
-            }
-        }
-        val title = SavedParams.loadNotificationTitle()
-        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(com.follow.clashx.service.R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setOngoing(true)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
-            .build()
-        val fgType = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else 0
-        startForeground(com.follow.clashx.common.GlobalState.NOTIFICATION_ID, notification, fgType)
+        com.follow.clashx.common.promoteToForeground(
+            com.follow.clashx.service.R.drawable.ic_notification,
+            SavedParams.loadNotificationTitle(),
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder {
-        return if (intent?.action == SERVICE_INTERFACE) super.onBind(intent)!! else binder
+        return if (intent?.action == SERVICE_INTERFACE) super.onBind(intent) ?: binder else binder
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -168,7 +148,7 @@ class FlVpnService : VpnService(), IBaseService {
 
     override fun onDestroy() {
         runCatching { com.follow.clashx.core.Core.stopTun() }
-        runBlocking { runCatching { loader.stop() } }
+        runCatching { kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { loader.stop() } }
         closeTun()
         handleDestroy()
         super.onDestroy()
@@ -186,10 +166,14 @@ class FlVpnService : VpnService(), IBaseService {
         if (options.ipv4) options.ipv4Address.toCIDR()?.let { (addr, p) -> builder.addAddress(addr, p) }
         if (options.ipv6) options.ipv6Address.toCIDR()?.let { (addr, p) -> builder.addAddress(addr, p) }
 
-        options.routeAddress.forEach { route ->
-            route.toCIDR()?.let { (addr, p) -> builder.addRoute(addr, p) }
-        }
-        if (options.routeAddress.isEmpty()) {
+        val filteredRoutes = options.routeAddress.mapNotNull { it.toCIDR() }
+            .filter { (addr, _) ->
+                val isV6 = addr.contains(':')
+                if (isV6) options.ipv6 else options.ipv4
+            }
+        if (filteredRoutes.isNotEmpty()) {
+            filteredRoutes.forEach { (addr, p) -> builder.addRoute(addr, p) }
+        } else {
             if (options.ipv4) builder.addRoute("0.0.0.0", 0)
             if (options.ipv6) builder.addRoute("::", 0)
         }
