@@ -176,7 +176,7 @@ class _HeroConnectState extends ConsumerState<HeroConnect>
                   Positioned(
                     right: 0,
                     child: _IconBtn(
-                      icon: Icons.support_agent_rounded,
+                      icon: Icons.contact_support,
                       color: colorScheme.onSecondaryContainer,
                       bgColor: colorScheme.secondaryContainer.withValues(alpha: 0.4),
                       onTap: () => globalState.openUrl(headers['support-url']!),

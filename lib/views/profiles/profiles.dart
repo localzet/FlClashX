@@ -461,9 +461,7 @@ class _ProfileItemState extends State<ProfileItem> {
                               ),
                               if (widget.profile.providerHeaders['support-url'] != null && widget.profile.providerHeaders['support-url']!.isNotEmpty && !_isTV )
                             PopupMenuItemData(
-                              icon: widget.profile.providerHeaders['support-url']!.toLowerCase().contains('t.me')
-                              ? Icons.telegram
-                              : Icons.insert_link,
+                              icon: Icons.contact_support,
                               label: appLocalizations.support,
                               onPressed: () {
                                 globalState.openUrl(widget.profile.providerHeaders['support-url']!);
