@@ -122,7 +122,9 @@ class _HeroConnectState extends ConsumerState<HeroConnect>
           color: colorScheme.outlineVariant.withValues(alpha: 0.7),
           width: 1.5,
         ),
-        color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.85),
+        color: _isStart
+            ? Color.lerp(colorScheme.surfaceContainerHigh, colorScheme.primaryContainer, 0.15)!.withValues(alpha: 0.75)
+            : colorScheme.surfaceContainerHigh.withValues(alpha: 0.85),
       ),
       child: Column(
         children: [
