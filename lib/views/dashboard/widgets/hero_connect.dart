@@ -106,15 +106,9 @@ class _HeroConnectState extends ConsumerState<HeroConnect>
     final mode = ref.watch(patchClashConfigProvider.select((s) => s.mode));
     final globalModeEnabled = ref.watch(globalModeEnabledProvider);
 
-    final t = _toggleAnimation.value;
-    final bgStart1 = colorScheme.surfaceContainerHigh.withValues(alpha: 0.85);
-    final bgStart2 = colorScheme.surfaceContainer.withValues(alpha: 0.85);
-    final bgActive1 = colorScheme.primary.withValues(alpha: 0.2);
-    final bgActive2 = colorScheme.primaryContainer.withValues(alpha: 0.35);
-
-    return AnimatedBuilder(
-      animation: _toggleAnimation,
-      builder: (_, child) => Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 800),
+      curve: Curves.easeOutBack,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: BoxDecoration(
@@ -125,14 +119,17 @@ class _HeroConnectState extends ConsumerState<HeroConnect>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color.lerp(bgStart1, bgActive1, t)!,
-            Color.lerp(bgStart2, bgActive2, t)!,
-          ],
+          colors: _isStart
+              ? [
+                  colorScheme.primary.withValues(alpha: 0.2),
+                  colorScheme.primaryContainer.withValues(alpha: 0.35),
+                ]
+              : [
+                  colorScheme.surfaceContainerHigh.withValues(alpha: 0.85),
+                  colorScheme.surfaceContainer.withValues(alpha: 0.85),
+                ],
         ),
       ),
-      child: child,
-    ),
       child: Column(
         children: [
           // Announce banner
