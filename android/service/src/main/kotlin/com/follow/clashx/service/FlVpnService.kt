@@ -1,11 +1,15 @@
 package com.follow.clashx.service
 
+import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
+import android.net.wifi.WifiManager
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.os.SystemClock
 import com.follow.clashx.common.GlobalState
 import com.follow.clashx.common.SavedParams
@@ -15,6 +19,7 @@ import com.follow.clashx.core.InvokeInterface
 import com.follow.clashx.service.models.VpnOptions
 import com.follow.clashx.service.models.gsonSanitized
 import com.follow.clashx.service.models.toCIDR
+import com.follow.clashx.service.modules.HealthCheckModule
 import com.follow.clashx.service.modules.NetworkObserveModule
 import com.follow.clashx.service.modules.NotificationModule
 import com.google.gson.Gson
@@ -33,9 +38,14 @@ class FlVpnService : VpnService(), IBaseService {
     private val binder = LocalBinder()
     private val gson = Gson()
     private var tunFd: ParcelFileDescriptor? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
+    private val healthCheckModule = HealthCheckModule(this)
 
     private val loader = moduleLoader {
-        install(::NetworkObserveModule)
+        install { healthCheckModule }
+        install { NetworkObserveModule(it, healthCheckModule) }
         install(::NotificationModule)
     }
 
@@ -151,6 +161,7 @@ class FlVpnService : VpnService(), IBaseService {
         runCatching { com.follow.clashx.core.Core.stopTun() }
         runCatching { kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { loader.stop() } }
         closeTun()
+        releaseLocks()
         handleDestroy()
         super.onDestroy()
     }
@@ -214,6 +225,7 @@ class FlVpnService : VpnService(), IBaseService {
         val pfd = builder.establish() ?: error("VpnService.Builder.establish() returned null")
         val fd = pfd.detachFd()
         tunFd = pfd
+        acquireLocks()
         loader.start()
 
         com.follow.clashx.core.Core.startTun(
@@ -241,11 +253,38 @@ class FlVpnService : VpnService(), IBaseService {
         runCatching { com.follow.clashx.core.Core.stopTun() }
         loader.stop()
         closeTun()
+        releaseLocks()
+        handleDestroy()
         stopSelf()
     }
 
     private fun closeTun() {
         runCatching { tunFd?.close() }
         tunFd = null
+    }
+
+    private fun acquireLocks() {
+        if (wakeLock == null) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FlClashX::VpnTunnel").apply {
+                acquire()
+            }
+        }
+        if (wifiLock == null) {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            @Suppress("DEPRECATION")
+            wifiLock = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "FlClashX::VpnTunnel")
+            } else {
+                wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "FlClashX::VpnTunnel")
+            }).apply { acquire() }
+        }
+    }
+
+    private fun releaseLocks() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        wifiLock?.let { if (it.isHeld) it.release() }
+        wifiLock = null
     }
 }

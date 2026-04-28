@@ -11,7 +11,10 @@ import com.follow.clashx.common.GlobalState
 import com.follow.clashx.service.Module
 import com.google.gson.Gson
 
-class NetworkObserveModule(service: Service) : Module(service) {
+class NetworkObserveModule(
+    service: Service,
+    private val healthCheck: HealthCheckModule? = null,
+) : Module(service) {
     private var registered = false
     private var currentNetwork: Network? = null
 
@@ -21,15 +24,19 @@ class NetworkObserveModule(service: Service) : Module(service) {
             val prev = currentNetwork
             currentNetwork = network
             if (prev != null && prev != network) {
-                GlobalState.log("Network changed: $prev -> $network, resetting connections")
+                GlobalState.log("Network changed: $prev -> $network, reconnecting core")
                 runCatching { com.follow.clashx.core.Core.resetConnections() }
                     .onFailure { GlobalState.log("resetConnections failed: ${it.message}") }
+                healthCheck?.let { hc ->
+                    GlobalState.launch { hc.runCheck("network-change") }
+                }
             }
         }
 
         override fun onLost(network: Network) {
             super.onLost(network)
             if (currentNetwork == network) {
+                GlobalState.log("Network lost: $network")
                 currentNetwork = null
             }
         }

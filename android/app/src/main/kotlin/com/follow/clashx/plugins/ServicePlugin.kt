@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
 class ServicePlugin :
@@ -94,7 +95,9 @@ class ServicePlugin :
     }
 
     private fun handleInit(result: MethodChannel.Result) {
-        Service.bind()
+        runCatching { Service.bind() }.onFailure {
+            Log.w("ServicePlugin", "Service.bind() failed: ${it.message}")
+        }
         Service.onServiceDisconnected = ::onServiceDisconnected
         launch {
             Service.setEventListener { value -> dispatchEvent(value) }
@@ -114,9 +117,12 @@ class ServicePlugin :
 
     private fun onServiceDisconnected(message: String) {
         Log.w("ServicePlugin", "remote service disconnected: $message")
-        GlobalState.runTime = 0L
-        com.follow.clashx.common.SavedParams.setVpnActive(false)
-        GlobalState.runStateFlow.tryEmit(RunState.STOP)
+        CommonGlobalState.launch {
+            GlobalState.runLock.withLock {
+                GlobalState.runTime = 0L
+                GlobalState.runStateFlow.tryEmit(RunState.STOP)
+            }
+        }
         invokeOnMain("crash", message)
     }
 

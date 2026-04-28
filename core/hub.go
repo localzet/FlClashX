@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,6 +49,8 @@ func handleInitClash(paramsString string) bool {
 	if err != nil {
 		return false
 	}
+	debug.SetGCPercent(-1)
+	debug.SetMemoryLimit(60 * 1024 * 1024)
 	version = params.Version
 	constant.SetHomeDir(params.HomeDir)
 	if !isInit {

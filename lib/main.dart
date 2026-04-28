@@ -152,8 +152,7 @@ String _buildNotificationTitle(Profile? profile) {
 Future<void> _handleStop() async {
   try {
     unawaited(app?.tip(appLocalizations.stopVpn));
-    await clashCore.stopListener();
-    await clashLib?.stopVpn();
+    await globalState.appController.updateStatus(false);
   } catch (e) {
     commonPrint.log("Tile onStop error: $e");
   }

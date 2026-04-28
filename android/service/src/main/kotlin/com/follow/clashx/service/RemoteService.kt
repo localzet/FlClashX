@@ -168,11 +168,6 @@ class RemoteService : Service() {
                     if (delegate == null) {
                         State.runTime = 0L
                         com.follow.clashx.common.SavedParams.setVpnActive(false)
-                        runCatching {
-                            val stopIntent = android.content.Intent(this@RemoteService, FlVpnService::class.java)
-                                .setAction(FlVpnService.ACTION_STOP)
-                            startService(stopIntent)
-                        }
                         result.onResult(0L)
                         return@withLock
                     }

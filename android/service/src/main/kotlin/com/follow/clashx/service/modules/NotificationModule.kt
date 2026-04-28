@@ -61,7 +61,7 @@ class NotificationModule(service: Service) : Module(service) {
         if (manager.getNotificationChannel(GlobalState.NOTIFICATION_CHANNEL) != null) return
         val channel = NotificationChannel(
             GlobalState.NOTIFICATION_CHANNEL,
-            "FlClashX",
+            service.getString(com.follow.clashx.common.R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW,
         )
         manager.createNotificationChannel(channel)

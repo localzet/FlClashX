@@ -78,9 +78,24 @@ class AppController {
     }, args: [groupName, proxyName]);
   }
 
-  /// Update cached server name in VPN plugin for foreground notification
-  void _updateForegroundServerName(String groupName, String serverName) {
-    vpn?.updateServerName(serverName);
+  /// Update cached server name in VPN plugin for foreground notification.
+  /// Only updates if the changed group matches the flclashx-serverinfo header,
+  /// or if no header is set and this is the first non-DIRECT/REJECT group.
+  void _updateForegroundServerName(String groupName, String proxyName) {
+    final profile = globalState.config.currentProfile;
+    if (profile == null) return;
+    final serverInfoHeader = profile.providerHeaders['flclashx-serverinfo'];
+    if (serverInfoHeader != null && serverInfoHeader.isNotEmpty) {
+      String decodedGroupName;
+      try {
+        final normalized = base64.normalize(serverInfoHeader);
+        decodedGroupName = utf8.decode(base64.decode(normalized)).trim();
+      } catch (_) {
+        decodedGroupName = serverInfoHeader.trim();
+      }
+      if (groupName != decodedGroupName) return;
+    }
+    vpn?.updateServerName(proxyName);
   }
 
   /// Initialize foreground notification cache with current profile and server
@@ -160,7 +175,7 @@ class AppController {
       await globalState.handleStart([
         updateTraffic,
       ]);
-      _startRunTimeTimer();
+      startRunTimeTimer();
       final currentLastModified =
           await _ref.read(currentProfileProvider)?.profileLastModified;
       if (currentLastModified == null || lastProfileModified == null) {
@@ -173,7 +188,7 @@ class AppController {
       }
       applyProfileDebounce();
     } else {
-      _stopRunTimeTimer();
+      stopRunTimeTimer();
       await globalState.handleStop();
       clashCore.resetTraffic();
       _ref.read(trafficsProvider.notifier).clear();
@@ -185,15 +200,15 @@ class AppController {
 
   Timer? _runTimeTimer;
 
-  void _startRunTimeTimer() {
-    _stopRunTimeTimer();
+  void startRunTimeTimer() {
+    stopRunTimeTimer();
     updateRunTime();
     _runTimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       updateRunTime();
     });
   }
 
-  void _stopRunTimeTimer() {
+  void stopRunTimeTimer() {
     _runTimeTimer?.cancel();
     _runTimeTimer = null;
   }

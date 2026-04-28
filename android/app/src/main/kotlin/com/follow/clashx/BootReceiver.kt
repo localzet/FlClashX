@@ -6,7 +6,6 @@ import android.content.Intent
 import android.net.VpnService
 import android.util.Log
 import com.follow.clashx.common.SavedParams
-import com.follow.clashx.extensions.getActionIntent
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -25,12 +24,8 @@ class BootReceiver : BroadcastReceiver() {
 
         val vpnPrepare = VpnService.prepare(context)
         if (vpnPrepare != null) {
-            Log.d(TAG, "VPN permission not granted, launching TempActivity")
-            try {
-                context.startActivity(context.getActionIntent("START"))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to launch TempActivity: ${e.message}")
-            }
+            Log.d(TAG, "VPN permission not granted, clearing active state")
+            SavedParams.setVpnActive(false)
             return
         }
 

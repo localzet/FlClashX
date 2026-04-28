@@ -119,10 +119,18 @@ class _AppStateManagerState extends ConsumerState<AppStateManager>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       globalState.appController.savePreferences();
+      if (Platform.isAndroid) {
+        globalState.stopUpdateTasks();
+        globalState.appController.stopRunTimeTimer();
+      }
     } else {
       render?.resume();
       if (state == AppLifecycleState.resumed && Platform.isAndroid) {
         clashLib?.reconnectIfNeeded();
+        if (globalState.isStart) {
+          globalState.startUpdateTasks();
+          globalState.appController.startRunTimeTimer();
+        }
       }
     }
   }

@@ -59,7 +59,8 @@ fun Service.ensureNotificationChannel() {
         if (mgr.getNotificationChannel(GlobalState.NOTIFICATION_CHANNEL) == null) {
             mgr.createNotificationChannel(
                 android.app.NotificationChannel(
-                    GlobalState.NOTIFICATION_CHANNEL, "FlClashX",
+                    GlobalState.NOTIFICATION_CHANNEL,
+                    getString(R.string.notification_channel_name),
                     android.app.NotificationManager.IMPORTANCE_LOW,
                 )
             )
@@ -77,17 +78,20 @@ fun Service.buildServiceNotification(iconRes: Int, title: String = "FlClashX"): 
     } else null
     val stopIntent = android.content.Intent(this, this::class.java)
         .setAction("com.follow.clashx.service.STOP")
-    val stopPending = android.app.PendingIntent.getService(
-        this, 1, stopIntent,
-        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
-    )
+    val piFlags = android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+    val stopPending = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        android.app.PendingIntent.getForegroundService(this, 1, stopIntent, piFlags)
+    } else {
+        android.app.PendingIntent.getService(this, 1, stopIntent, piFlags)
+    }
+    val stopLabel = getString(R.string.notification_stop)
     return androidx.core.app.NotificationCompat.Builder(this, GlobalState.NOTIFICATION_CHANNEL)
         .setSmallIcon(iconRes)
         .setContentTitle(title)
         .setOngoing(true)
         .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
         .apply { if (contentIntent != null) setContentIntent(contentIntent) }
-        .addAction(android.R.drawable.ic_media_pause, "Stop", stopPending)
+        .addAction(android.R.drawable.ic_media_pause, stopLabel, stopPending)
         .build()
 }
 
