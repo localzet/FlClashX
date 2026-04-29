@@ -13,6 +13,8 @@ import com.follow.clashx.service.RemoteService
 import com.follow.clashx.service.models.NotificationParams
 import com.follow.clashx.service.models.VpnOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -41,7 +43,7 @@ object Service {
     }
 
     suspend fun invokeAction(data: String, cb: ((String) -> Unit)?): Result<Unit> {
-        val chunks = mutableListOf<ByteArray>()
+        val chunks = Collections.synchronizedList(mutableListOf<ByteArray>())
         return delegate.useService { proxy ->
             proxy.invokeAction(data, object : ICallbackInterface.Stub() {
                 override fun onResult(result: ByteArray?, isSuccess: Boolean, ack: IAckInterface?) {
@@ -60,7 +62,7 @@ object Service {
         onStarted: (() -> Unit)?,
         onResult: ((String) -> Unit)?,
     ): Result<Unit> {
-        val chunks = mutableListOf<ByteArray>()
+        val chunks = Collections.synchronizedList(mutableListOf<ByteArray>())
         return delegate.useService { proxy ->
             proxy.quickStart(
                 initParamsString,
@@ -83,7 +85,7 @@ object Service {
     }
 
     suspend fun setEventListener(cb: ((String?) -> Unit)?): Result<Unit> {
-        val buffers = HashMap<String, MutableList<ByteArray>>()
+        val buffers = ConcurrentHashMap<String, MutableList<ByteArray>>()
         return delegate.useService { proxy ->
             proxy.setEventListener(
                 if (cb == null) null else object : IEventInterface.Stub() {
@@ -93,7 +95,7 @@ object Service {
                         isSuccess: Boolean,
                         ack: IAckInterface?,
                     ) {
-                        val list = buffers.getOrPut(id) { mutableListOf() }
+                        val list = buffers.getOrPut(id) { Collections.synchronizedList(mutableListOf()) }
                         list.add(data ?: byteArrayOf())
                         ack?.onAck()
                         if (isSuccess) {

@@ -96,7 +96,7 @@ func handleStopTun() {
 	}
 }
 
-func handleStartTun(fd int, callback unsafe.Pointer) {
+func handleStartTun(fd int, callback unsafe.Pointer) bool {
 	handleStopTun()
 	tunLock.Lock()
 	defer tunLock.Unlock()
@@ -108,14 +108,22 @@ func handleStartTun(fd int, callback unsafe.Pointer) {
 			limit:    semaphore.NewWeighted(4),
 		}
 		initTunHook()
-		tunListener, _ := t.Start(fd, currentConfig.General.Tun)
+		tunListener, err := t.Start(fd, currentConfig.General.Tun)
+		if err != nil {
+			log.Errorln("handleStartTun: t.Start failed: %v", err)
+			syscall.Close(fd)
+			removeTunHook()
+			return false
+		}
 		if tunListener != nil {
 			log.Infoln("TUN address: %v", tunListener.Address())
 			tunHandler.listener = tunListener
 		} else {
 			removeTunHook()
+			return false
 		}
 	}
+	return true
 }
 
 func handleGetRunTime() string {
@@ -181,14 +189,21 @@ func handleGetAndroidVpnOptions() string {
 }
 
 func handleUpdateDns(value string) {
+	var dnsServers []string
+	if err := json.Unmarshal([]byte(value), &dnsServers); err != nil {
+		// Fallback to comma-split for backward compatibility
+		dnsServers = strings.Split(value, ",")
+	}
 	go func() {
 		log.Infoln("[DNS] updateDns %s", value)
-		dns.UpdateSystemDNS(strings.Split(value, ","))
+		dns.UpdateSystemDNS(dnsServers)
 		dns.FlushCacheWithDefaultResolver()
 	}()
 }
 
 func handleGetCurrentProfileName() string {
+	runLock.Lock()
+	defer runLock.Unlock()
 	if state.CurrentState == nil {
 		return ""
 	}
@@ -235,10 +250,7 @@ func quickStart(initParamsChar *C.char, paramsChar *C.char, stateParamsChar *C.c
 
 //export startTUN
 func startTUN(fd C.int, callback unsafe.Pointer) bool {
-	go func() {
-		handleStartTun(int(fd), callback)
-	}()
-	return true
+	return handleStartTun(int(fd), callback)
 }
 
 //export getRunTime

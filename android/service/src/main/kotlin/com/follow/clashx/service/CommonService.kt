@@ -45,7 +45,7 @@ class CommonService : Service(), IBaseService {
     }
 
     override fun onDestroy() {
-        runCatching { kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { loader.stop() } }
+        runCatching { GlobalState.launch { loader.stop() } }
         handleDestroy()
         super.onDestroy()
     }

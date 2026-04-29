@@ -74,7 +74,14 @@ class FilesProvider : DocumentsProvider() {
 
     private fun docIdOf(file: File): String = file.absolutePath
 
-    private fun fileOf(docId: String): File = File(docId)
+    private fun fileOf(docId: String): File {
+        val file = File(docId).canonicalFile
+        val root = rootDir.canonicalFile
+        require(file.path.startsWith(root.path + File.separator) || file == root) {
+            "Path outside root directory"
+        }
+        return file
+    }
 
     private fun includeFile(cursor: MatrixCursor, file: File) {
         val mime = if (file.isDirectory) DocumentsContract.Document.MIME_TYPE_DIR else "application/octet-stream"

@@ -12,11 +12,11 @@ object State {
 
     @Volatile var runTime: Long = 0L
 
-    var options: VpnOptions? = null
+    @Volatile var options: VpnOptions? = null
 
     val notificationParamsFlow = MutableStateFlow(NotificationParams())
 
-    var delegate: ServiceDelegate<IBaseService>? = null
+    @Volatile var delegate: ServiceDelegate<IBaseService>? = null
 
-    var intent: Intent? = null
+    @Volatile var intent: Intent? = null
 }

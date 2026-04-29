@@ -27,6 +27,7 @@
         android:banner="@mipmap/ic_banner"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
         android:label="FlClashX"
         android:memtagMode="off">
 
@@ -74,6 +75,7 @@
         <activity
             android:name=".TempActivity"
             android:exported="true"
+            android:permission="${applicationId}.permission.RECEIVE_BROADCASTS"
             android:theme="@style/TransparentTheme">
             <intent-filter>
                 <category android:name="android.intent.category.DEFAULT" />

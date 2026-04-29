@@ -11,8 +11,8 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 suspend fun Drawable.getBase64(): String {
     val drawable = this
@@ -35,7 +35,7 @@ suspend fun <T> MethodChannel.awaitResult(
     method: String,
     arguments: Any? = null,
 ): T? = withContext(Dispatchers.Main) {
-    suspendCoroutine { continuation ->
+    suspendCancellableCoroutine { continuation ->
         invokeMethod(method, arguments, object : MethodChannel.Result {
             @Suppress("UNCHECKED_CAST")
             override fun success(result: Any?) = continuation.resume(result as T)

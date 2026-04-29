@@ -19,8 +19,8 @@ import com.follow.clashx.service.models.VpnOptions
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 class RemoteService : Service() {
 
@@ -35,7 +35,7 @@ class RemoteService : Service() {
         for ((i, chunk) in chunks.withIndex()) {
             val isLast = i == chunks.lastIndex
             val acked = kotlinx.coroutines.withTimeoutOrNull(5_000L) {
-                suspendCoroutine<Unit> { cont ->
+                suspendCancellableCoroutine<Unit> { cont ->
                     val ack = object : IAckInterface.Stub() {
                         override fun onAck() {
                             cont.resume(Unit)

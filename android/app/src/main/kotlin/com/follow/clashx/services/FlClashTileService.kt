@@ -31,6 +31,7 @@ class FlClashXTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
+        GlobalState.syncStatus()
         syncTile()
         GlobalState.runState.observeForever(observer)
     }

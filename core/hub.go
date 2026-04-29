@@ -36,9 +36,11 @@ var (
 	externalProviders   = map[string]cp.Provider{}
 	logSubscriber       observable.Subscription[log.Event]
 	healthCheckStopCh   chan struct{}
+	healthCheckChMu     sync.Mutex
 	healthCheckMu       sync.Mutex
 	healthCheckSeen     = map[string]string{}
 	requestStopCh       chan struct{}
+	requestChMu         sync.Mutex
 	requestMu           sync.Mutex
 	requestSeen         = map[string]bool{}
 )
@@ -49,7 +51,7 @@ func handleInitClash(paramsString string) bool {
 	if err != nil {
 		return false
 	}
-	debug.SetGCPercent(-1)
+	debug.SetGCPercent(50)
 	debug.SetMemoryLimit(60 * 1024 * 1024)
 	version = params.Version
 	constant.SetHomeDir(params.HomeDir)
@@ -126,7 +128,10 @@ func handleShutdown() bool {
 
 func startHealthCheckForwarder() {
 	stopHealthCheckForwarder()
+	healthCheckChMu.Lock()
 	healthCheckStopCh = make(chan struct{})
+	stopCh := healthCheckStopCh
+	healthCheckChMu.Unlock()
 	go func(stopCh chan struct{}) {
 		interval := minHealthCheckInterval
 		log.Infoln("[HealthCheck] forwarder interval: %s", interval)
@@ -146,10 +151,12 @@ func startHealthCheckForwarder() {
 				return
 			}
 		}
-	}(healthCheckStopCh)
+	}(stopCh)
 }
 
 func stopHealthCheckForwarder() {
+	healthCheckChMu.Lock()
+	defer healthCheckChMu.Unlock()
 	if healthCheckStopCh == nil {
 		return
 	}
@@ -217,13 +224,17 @@ func touchProviders() {
 // not expose the statistic.DefaultRequestNotify hook our old Clash.Meta fork
 // relied on, so we emulate it with a short-interval poll.
 func startRequestForwarder() {
+	requestChMu.Lock()
 	if requestStopCh != nil {
+		requestChMu.Unlock()
 		return
 	}
 	requestMu.Lock()
 	requestSeen = map[string]bool{}
 	requestMu.Unlock()
 	requestStopCh = make(chan struct{})
+	stopCh := requestStopCh
+	requestChMu.Unlock()
 	go func(stopCh chan struct{}) {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
@@ -235,10 +246,12 @@ func startRequestForwarder() {
 				return
 			}
 		}
-	}(requestStopCh)
+	}(stopCh)
 }
 
 func stopRequestForwarder() {
+	requestChMu.Lock()
+	defer requestChMu.Unlock()
 	if requestStopCh == nil {
 		return
 	}
@@ -655,6 +668,8 @@ func handleGetMemory(fn func(value string)) {
 }
 
 func handleSetState(params string) {
+	runLock.Lock()
+	defer runLock.Unlock()
 	if err := json.Unmarshal([]byte(params), state.CurrentState); err != nil {
 		log.Warnln("[State] unmarshal failed: %v", err)
 	}

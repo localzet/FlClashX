@@ -25,6 +25,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -34,7 +35,10 @@ import kotlinx.coroutines.sync.withPermit
 class ServicePlugin :
     FlutterPlugin,
     MethodChannel.MethodCallHandler,
-    CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.Main) {
+    CoroutineScope {
+
+    private var job = SupervisorJob()
+    override val coroutineContext = job + Dispatchers.Main
 
     private lateinit var channel: MethodChannel
     private val eventSemaphore = Semaphore(10)
@@ -50,6 +54,7 @@ class ServicePlugin :
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         attached = false
         channel.setMethodCallHandler(null)
+        job.cancel()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -164,7 +169,7 @@ class ServicePlugin :
             Log.w("ServicePlugin", "VpnOptions parse failed, using defaults: ${e.message}")
             VpnOptions()
         }
-        if (options.enable) {
+        if (options.enable && GlobalState.runStateFlow.value != RunState.START) {
             GlobalState.getCurrentAppPlugin()?.requestVpnPermission {
                 doStartService(options, result)
             } ?: doStartService(options, result)

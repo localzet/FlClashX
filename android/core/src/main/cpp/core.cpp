@@ -37,14 +37,20 @@ call_tun_interface_resolve_process_impl(void *tun_interface, int protocol,
                                         const int uid) {
     ATTACH_JNI();
     if (env == nullptr) return "";
+    const auto jSource = new_string(source);
+    const auto jTarget = new_string(target);
     const auto packageName = reinterpret_cast<jstring>(env->CallObjectMethod(
             static_cast<jobject>(tun_interface),
             m_tun_interface_resolve_process,
             protocol,
-            new_string(source),
-            new_string(target),
+            jSource,
+            jTarget,
             uid));
-    return get_string(packageName);
+    if (jSource) env->DeleteLocalRef(jSource);
+    if (jTarget) env->DeleteLocalRef(jTarget);
+    const char *result = get_string(packageName);
+    if (packageName) env->DeleteLocalRef(packageName);
+    return result;
 }
 
 /**

@@ -1,15 +1,10 @@
 package com.follow.clashx.service
 
-import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
-import android.net.wifi.WifiManager
 import android.os.Binder
-import android.os.Build
 import android.os.IBinder
-import android.os.ParcelFileDescriptor
-import android.os.PowerManager
 import android.os.SystemClock
 import com.follow.clashx.common.GlobalState
 import com.follow.clashx.common.SavedParams
@@ -23,7 +18,6 @@ import com.follow.clashx.service.modules.HealthCheckModule
 import com.follow.clashx.service.modules.NetworkObserveModule
 import com.follow.clashx.service.modules.NotificationModule
 import com.google.gson.Gson
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,9 +31,7 @@ class FlVpnService : VpnService(), IBaseService {
 
     private val binder = LocalBinder()
     private val gson = Gson()
-    private var tunFd: ParcelFileDescriptor? = null
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var wifiLock: WifiManager.WifiLock? = null
+    private var tunActive = false
 
     private val healthCheckModule = HealthCheckModule(this)
 
@@ -98,6 +90,12 @@ class FlVpnService : VpnService(), IBaseService {
 
             val params = SavedParams.loadQuickStartParams() ?: run {
                 GlobalState.log("Always-on: no saved params, cannot cold-start")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
                 stopSelf()
                 return@withLock
             }
@@ -115,6 +113,13 @@ class FlVpnService : VpnService(), IBaseService {
             if (coreResult == null) {
                 GlobalState.log("Always-on: quickStart timed out")
                 SavedParams.setVpnActive(false)
+                runCatching { com.follow.clashx.core.Core.stopTun() }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
                 stopSelf()
                 return@withLock
             }
@@ -122,6 +127,13 @@ class FlVpnService : VpnService(), IBaseService {
             if (coreResult.isNotEmpty()) {
                 GlobalState.log("Always-on: quickStart returned error, aborting: $coreResult")
                 SavedParams.setVpnActive(false)
+                runCatching { com.follow.clashx.core.Core.stopTun() }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
                 stopSelf()
                 return@withLock
             }
@@ -142,6 +154,13 @@ class FlVpnService : VpnService(), IBaseService {
             }.onFailure {
                 GlobalState.log("Always-on: handleStart failed: ${it.message}")
                 SavedParams.setVpnActive(false)
+                runCatching { com.follow.clashx.core.Core.stopTun() }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
                 stopSelf()
                 return@withLock
             }
@@ -159,9 +178,8 @@ class FlVpnService : VpnService(), IBaseService {
 
     override fun onDestroy() {
         runCatching { com.follow.clashx.core.Core.stopTun() }
-        runCatching { kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { loader.stop() } }
-        closeTun()
-        releaseLocks()
+        runCatching { GlobalState.launch { loader.stop() } }
+        tunActive = false
         handleDestroy()
         super.onDestroy()
     }
@@ -170,7 +188,7 @@ class FlVpnService : VpnService(), IBaseService {
         State.options = options
         val builder = Builder()
             .setSession("FlClashX")
-            .setMtu(9000)
+            .setMtu(1500)
         for (dns in options.dnsServers.ifEmpty { listOf("8.8.8.8", "1.1.1.1") }) {
             builder.addDnsServer(dns)
         }
@@ -224,8 +242,7 @@ class FlVpnService : VpnService(), IBaseService {
 
         val pfd = builder.establish() ?: error("VpnService.Builder.establish() returned null")
         val fd = pfd.detachFd()
-        tunFd = pfd
-        acquireLocks()
+        tunActive = true
         loader.start()
 
         com.follow.clashx.core.Core.startTun(
@@ -247,44 +264,13 @@ class FlVpnService : VpnService(), IBaseService {
     }
 
     override suspend fun handleStop() {
-        if (State.runTime == 0L && tunFd == null) return
+        if (State.runTime == 0L && !tunActive) return
         State.runTime = 0L
+        tunActive = false
         SavedParams.setVpnActive(false)
         runCatching { com.follow.clashx.core.Core.stopTun() }
         loader.stop()
-        closeTun()
-        releaseLocks()
-        handleDestroy()
         stopSelf()
     }
 
-    private fun closeTun() {
-        runCatching { tunFd?.close() }
-        tunFd = null
-    }
-
-    private fun acquireLocks() {
-        if (wakeLock == null) {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FlClashX::VpnTunnel").apply {
-                acquire()
-            }
-        }
-        if (wifiLock == null) {
-            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            @Suppress("DEPRECATION")
-            wifiLock = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "FlClashX::VpnTunnel")
-            } else {
-                wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "FlClashX::VpnTunnel")
-            }).apply { acquire() }
-        }
-    }
-
-    private fun releaseLocks() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
-        wifiLock?.let { if (it.isHeld) it.release() }
-        wifiLock = null
-    }
 }

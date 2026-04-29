@@ -1,8 +1,6 @@
 package com.follow.clashx.core
 
-import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.URL
 
 data object Core {
 
@@ -76,8 +74,21 @@ data object Core {
     // --- Helpers --------------------------------------------------------------
 
     private fun parseInetSocketAddress(address: String): InetSocketAddress {
-        val url = URL("https://$address")
-        return InetSocketAddress(InetAddress.getByName(url.host), url.port)
+        val lastColon = address.lastIndexOf(':')
+        if (lastColon < 0) return InetSocketAddress.createUnresolved(address, 0)
+
+        val host: String
+        val port: Int
+        if (address.startsWith("[")) {
+            // IPv6: [::1]:port
+            val closeBracket = address.indexOf(']')
+            host = address.substring(1, closeBracket)
+            port = address.substring(closeBracket + 2).toIntOrNull() ?: 0
+        } else {
+            host = address.substring(0, lastColon)
+            port = address.substring(lastColon + 1).toIntOrNull() ?: 0
+        }
+        return InetSocketAddress.createUnresolved(host, port)
     }
 
     @Volatile

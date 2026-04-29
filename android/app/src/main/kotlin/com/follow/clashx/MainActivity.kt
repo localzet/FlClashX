@@ -19,11 +19,12 @@ class MainActivity : FlutterActivity() {
         applyAppTheme()
         super.onCreate(savedInstanceState)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.R until 36) {
             window.attributes.preferredDisplayModeId = getHighestRefreshRateDisplayMode()
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun getHighestRefreshRateDisplayMode(): Int {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return 0
         val modes = windowManager.defaultDisplay.supportedModes

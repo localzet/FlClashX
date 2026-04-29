@@ -33,8 +33,11 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.Result
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,7 +55,9 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
 
     private var vpnCallBack: (() -> Unit)? = null
 
-    private val iconMap = mutableMapOf<String, String?>()
+    private val iconMap = object : LinkedHashMap<String, String?>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, String?>?): Boolean = size > 200
+    }
 
     private val packages = mutableListOf<Package>()
 
@@ -118,7 +123,7 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
     private var isBlockNotification: Boolean = false
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        scope = CoroutineScope(Dispatchers.Default)
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "app")
         channel.setMethodCallHandler(this)
     }
@@ -179,14 +184,16 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
             }
 
             "getPackages" -> {
-                scope.launch {
-                    result.success(getPackagesToJson())
+                scope.launch(Dispatchers.IO) {
+                    val json = getPackagesToJson()
+                    result.successOnMain(json)
                 }
             }
 
             "getChinaPackageNames" -> {
-                scope.launch {
-                    result.success(getChinaPackageNames())
+                scope.launch(Dispatchers.IO) {
+                    val names = getChinaPackageNames()
+                    result.successOnMain(names)
                 }
             }
 
@@ -194,20 +201,20 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
                 scope.launch {
                     val packageName = call.argument<String>("packageName")
                     if (packageName == null) {
-                        result.success(null)
+                        result.successOnMain(null)
                         return@launch
                     }
                     val packageIcon = getPackageIcon(packageName)
                     packageIcon.let {
                         if (it != null) {
-                            result.success(it)
+                            result.successOnMain(it)
                             return@launch
                         }
                         if (iconMap["default"] == null) {
                             iconMap["default"] =
                                 FlClashXApplication.getAppContext().packageManager?.defaultActivityIcon?.getBase64()
                         }
-                        result.success(iconMap["default"])
+                        result.successOnMain(iconMap["default"])
                         return@launch
                     }
                 }
@@ -317,13 +324,13 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
     }
 
     private suspend fun getPackagesToJson(): String {
-        return withContext(Dispatchers.Default) {
+        return withContext(Dispatchers.IO) {
             Gson().toJson(getPackages())
         }
     }
 
     private suspend fun getChinaPackageNames(): String {
-        return withContext(Dispatchers.Default) {
+        return withContext(Dispatchers.IO) {
             val packages: List<String> =
                 getPackages().map { it.packageName }.filter { isChinaPackage(it) }
             Gson().toJson(packages)
@@ -476,5 +483,13 @@ class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware 
             isBlockNotification = true
         }
         return true
+    }
+
+    private fun Result.successOnMain(value: Any?) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runCatching { success(value) }
+        } else {
+            Handler(Looper.getMainLooper()).post { runCatching { success(value) } }
+        }
     }
 }

@@ -27,6 +27,9 @@ fun Context.bindServiceFlow(
 ): Flow<IBinder?> = callbackFlow {
     val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            binder?.linkToDeath({
+                onServiceDisconnected(name)
+            }, 0)
             trySend(binder)
         }
 

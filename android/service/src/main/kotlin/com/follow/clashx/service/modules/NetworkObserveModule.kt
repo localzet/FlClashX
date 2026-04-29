@@ -15,21 +15,27 @@ class NetworkObserveModule(
     service: Service,
     private val healthCheck: HealthCheckModule? = null,
 ) : Module(service) {
+
+    companion object {
+        private val gson = Gson()
+    }
+
     private var registered = false
     private var currentNetwork: Network? = null
+    private var lastCapabilities: NetworkCapabilities? = null
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             super.onAvailable(network)
             val prev = currentNetwork
+            val wasLost = prev == null
             currentNetwork = network
             if (prev != null && prev != network) {
                 GlobalState.log("Network changed: $prev -> $network, reconnecting core")
-                runCatching { com.follow.clashx.core.Core.resetConnections() }
-                    .onFailure { GlobalState.log("resetConnections failed: ${it.message}") }
-                healthCheck?.let { hc ->
-                    GlobalState.launch { hc.runCheck("network-change") }
-                }
+                resetAndCheck("network-change")
+            } else if (wasLost) {
+                GlobalState.log("Network restored: $network, resetting stale connections")
+                resetAndCheck("network-restored")
             }
         }
 
@@ -38,6 +44,21 @@ class NetworkObserveModule(
             if (currentNetwork == network) {
                 GlobalState.log("Network lost: $network")
                 currentNetwork = null
+                lastCapabilities = null
+            }
+        }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            super.onCapabilitiesChanged(network, capabilities)
+            if (network != currentNetwork) return
+            val prev = lastCapabilities
+            lastCapabilities = capabilities
+            if (prev == null) return
+            val hadInternet = prev.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            if (!hadInternet && hasInternet) {
+                GlobalState.log("Internet capability restored on $network")
+                resetAndCheck("capability-restored")
             }
         }
 
@@ -45,8 +66,16 @@ class NetworkObserveModule(
             super.onLinkPropertiesChanged(network, linkProperties)
             val dns = linkProperties.dnsServers.map { it.hostAddress ?: "" }.filter { it.isNotBlank() }
             runCatching {
-                com.follow.clashx.core.Core.updateDns(Gson().toJson(dns))
+                com.follow.clashx.core.Core.updateDns(gson.toJson(dns))
             }.onFailure { GlobalState.log("updateDns failed: ${it.message}") }
+        }
+    }
+
+    private fun resetAndCheck(reason: String) {
+        runCatching { com.follow.clashx.core.Core.resetConnections() }
+            .onFailure { GlobalState.log("resetConnections failed: ${it.message}") }
+        healthCheck?.let { hc ->
+            GlobalState.launch { hc.runCheck(reason) }
         }
     }
 
