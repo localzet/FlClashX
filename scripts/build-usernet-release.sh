@@ -32,7 +32,7 @@ cp "$repo_dir/build/app/outputs/flutter-apk/app-release.apk" "$output"
 apksigner_bin="${USERNET_APKSIGNER_BIN:-$HOME/Android/Sdk/build-tools/36.0.0/apksigner}"
 "$apksigner_bin" verify --verbose "$output" >/dev/null
 if [[ "$release_channel" == stable ]]; then
-  "$repo_dir/scripts/check-usernet-public-apk.sh" "$output"
+  bash "$repo_dir/scripts/check-usernet-public-apk.sh" "$output"
 fi
 sha256sum "$output"
 echo "Release APK: $output"
