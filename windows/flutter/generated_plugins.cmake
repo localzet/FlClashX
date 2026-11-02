@@ -8,7 +8,9 @@ list(APPEND FLUTTER_PLUGIN_LIST
   dynamic_color
   file_selector_windows
   flutter_js
+  flutter_secure_storage_windows
   hotkey_manager_windows
+  local_auth_windows
   proxy
   screen_retriever_windows
   tray_manager
@@ -18,6 +20,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

@@ -68,3 +68,14 @@ app.*.map.json
 # Environment variables (contains sensitive data)
 .env
 *.local.sh
+android/app/src/main/jniLibs/**/libusernetrelay.so
+
+# Local build output and private signing material
+/android/build/
+*.p12
+*.keystore
+*.password
+.env.*
+!.env.example
+
+/android/.kotlin/

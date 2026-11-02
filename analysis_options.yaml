@@ -15,6 +15,10 @@ analyzer:
     - lib/clash/generated/**
     - lib/l10n/**
     - plugins/flutter_distributor/**
+    - android/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 linter:
   rules:

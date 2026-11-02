@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Ivan Zorin <creator@localzet.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package com.follow.clashx.plugins
 
 import android.app.NotificationChannel
@@ -11,6 +14,9 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Handler
+import android.os.Looper
+import android.net.LinkProperties
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -21,7 +27,7 @@ import com.follow.clashx.GlobalState
 import com.follow.clashx.RunState
 import com.follow.clashx.core.Core
 import com.follow.clashx.extensions.awaitResult
-import com.follow.clashx.extensions.resolveDns
+import com.follow.clashx.extensions.asSocketAddressText
 import com.follow.clashx.models.StartForegroundParams
 import com.follow.clashx.models.VpnOptions
 import com.follow.clashx.services.BaseServiceInterface
@@ -29,19 +35,24 @@ import com.follow.clashx.services.FlClashXService
 import com.follow.clashx.services.FlClashXVpnService
 import com.google.gson.Gson
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
+import java.util.IdentityHashMap
 import kotlin.concurrent.withLock
 
 data object VpnPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+    private val channels = IdentityHashMap<BinaryMessenger, MethodChannel>()
+    private var networkCallbackRegistered = false
     private lateinit var flutterMethodChannel: MethodChannel
     private var flClashXService: BaseServiceInterface? = null
     private var options: VpnOptions? = null
@@ -72,18 +83,27 @@ data object VpnPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
     }
 
+    @Synchronized
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        scope = CoroutineScope(Dispatchers.Default)
-        scope.launch {
-            registerNetworkCallback()
-        }
+        val first = channels.isEmpty()
         flutterMethodChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "vpn")
         flutterMethodChannel.setMethodCallHandler(this)
+        channels[flutterPluginBinding.binaryMessenger] = flutterMethodChannel
+        if (first) {
+            scope = CoroutineScope(Dispatchers.Default)
+            scope.launch { registerNetworkCallback() }
+        }
     }
 
+    @Synchronized
     override fun onDetachedFromEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+        channels.remove(flutterPluginBinding.binaryMessenger)?.setMethodCallHandler(null)
+        if (channels.isNotEmpty()) {
+            flutterMethodChannel = channels.values.last()
+            return
+        }
         unRegisterNetworkCallback()
-        flutterMethodChannel.setMethodCallHandler(null)
+        scope.cancel()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -136,46 +156,75 @@ data object VpnPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         flutterMethodChannel.invokeMethod("gc", null)
     }
 
-    val networks = mutableSetOf<Network>()
+    private var currentNetwork: Network? = null
+    private var lastDns: Pair<Network?, String>? = null
 
-    fun onUpdateNetwork() {
-        val dns = networks.flatMap { network ->
-            connectivity?.resolveDns(network) ?: emptyList()
-        }.toSet().joinToString(",")
+    @Synchronized
+    private fun updateNetworkDns(network: Network?, properties: LinkProperties?) {
+        if (network != currentNetwork) return
+        val dns = properties?.dnsServers?.joinToString(",") {
+            it.asSocketAddressText(53)
+        }.orEmpty()
+        val snapshot = network to dns
+        if (snapshot == lastDns) return
+        lastDns = snapshot
         scope.launch {
             withContext(Dispatchers.Main) {
-                flutterMethodChannel.invokeMethod("dnsChanged", dns)
+                val activeChannels = synchronized(this@VpnPlugin) { channels.values.toList() }
+                activeChannels.forEach { it.invokeMethod("dnsChanged", dns) }
             }
         }
     }
 
+    @Synchronized
+    private fun onUpdateNetwork() {
+        lastDns = null
+        val network = currentNetwork
+        updateNetworkDns(network, network?.let { connectivity?.getLinkProperties(it) })
+    }
+
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            networks.add(network)
-            onUpdateNetwork()
+            synchronized(this@VpnPlugin) { currentNetwork = network }
+        }
+
+        override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+            updateNetworkDns(network, properties)
         }
 
         override fun onLost(network: Network) {
-            networks.remove(network)
-            onUpdateNetwork()
+            synchronized(this@VpnPlugin) {
+                if (currentNetwork != network) return
+                currentNetwork = null
+                updateNetworkDns(null, null)
+            }
         }
     }
 
-    private val request = NetworkRequest.Builder().apply {
-        addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-        addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-    }.build()
-
+    @Synchronized
     private fun registerNetworkCallback() {
-        networks.clear()
-        connectivity?.registerNetworkCallback(request, callback)
+        if (channels.isEmpty() || networkCallbackRegistered) return
+        currentNetwork = null
+        lastDns = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivity?.registerBestMatchingNetworkCallback(request, callback, Handler(Looper.getMainLooper()))
+        } else {
+            connectivity?.registerDefaultNetworkCallback(callback)
+        }
+        networkCallbackRegistered = connectivity != null
     }
 
+    @Synchronized
     private fun unRegisterNetworkCallback() {
+        if (!networkCallbackRegistered) return
+        networkCallbackRegistered = false
         connectivity?.unregisterNetworkCallback(callback)
-        networks.clear()
-        onUpdateNetwork()
+        currentNetwork = null
+        updateNetworkDns(null, null)
     }
 
     private suspend fun startForeground() {

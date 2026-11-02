@@ -13,10 +13,13 @@ val localProperties = Properties().apply {
     }
 }
 
-val mStoreFile: File = file("keystore.jks")
-val mStorePassword: String? = localProperties.getProperty("storePassword")
-val mKeyAlias: String? = localProperties.getProperty("keyAlias")
-val mKeyPassword: String? = localProperties.getProperty("keyPassword")
+val mStoreFile: File = file(System.getenv("USERNET_KEYSTORE_FILE") ?: "keystore.jks")
+val mStorePassword: String? = System.getenv("USERNET_SIGNING_PASSWORD")
+        ?: localProperties.getProperty("storePassword")
+val mKeyAlias: String? = System.getenv("USERNET_SIGNING_ALIAS")
+        ?: localProperties.getProperty("keyAlias")
+val mKeyPassword: String? = System.getenv("USERNET_SIGNING_PASSWORD")
+        ?: localProperties.getProperty("keyPassword")
 val isRelease = mStoreFile.exists()
         && mStorePassword != null
         && mKeyAlias != null
@@ -25,7 +28,7 @@ val isRelease = mStoreFile.exists()
 android {
     namespace = "com.follow.clashx"
     compileSdk = 36
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -38,7 +41,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.follow.clashx"
+        applicationId = "com.userlay.usernet"
+        manifestPlaceholders["userNetAppLabel"] = "UserNet"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -72,7 +76,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-
             signingConfig = if (isRelease) {
                 signingConfigs.getByName("release")
             } else {

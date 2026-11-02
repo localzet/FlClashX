@@ -1,7 +1,7 @@
 name: flclashx
-description: Fork multi-platform proxy client FlClash based on ClashMeta, simple and easy to use, open-source and ad-free.
+description: UserNet by userlay.com — a multi-platform Mihomo client with censorship-resistant transport fallback.
 publish_to: "none"
-version: 0.4.0+2026012301
+version: 0.5.4+2026101003
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -16,7 +16,7 @@ dependencies:
   path: ^1.9.1
   shared_preferences: ^2.3.5
   window_manager: ^0.5.1
-  dynamic_color: ^1.8.1
+  dynamic_color: 1.8.1
   proxy:
     path: plugins/proxy
   window_ext:
@@ -43,7 +43,7 @@ dependencies:
   dio: ^5.9.0
   win32: ^5.15.0
   ffi: ^2.1.5
-  re_editor: 0.8.0
+  re_editor: ^0.10.0
   re_highlight: ^0.0.3
   archive: ^4.0.7
   lpinyin: ^2.0.3
@@ -64,6 +64,8 @@ dependencies:
   flutter_cache_manager: ^3.4.1
   cached_network_image: ^3.4.1
   crypto: ^3.0.7
+  flutter_secure_storage: ^9.2.4
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:
@@ -80,6 +82,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/images/usernet_mark.svg
+    - assets/images/usernet_mark_mono.svg
     - assets/data/
     - assets/fonts/
     - assets/images/

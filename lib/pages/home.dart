@@ -12,6 +12,9 @@ import 'package:intl/intl.dart';
 
 typedef OnSelected = void Function(int index);
 
+String pageLabelTitle(PageLabel label) =>
+    Intl.message(label.name);
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -38,9 +41,7 @@ class HomePage extends StatelessWidget {
                 viewMode != ViewMode.mobile ? navigationBar : null;
             return CommonScaffold(
               key: globalState.homeScaffoldKey,
-              title: Intl.message(
-                pageLabel.name,
-              ),
+              title: pageLabelTitle(pageLabel),
               sideNavigationBar: sideNavigationBar,
               body: child!,
               bottomNavigationBar: bottomNavigationBar,
@@ -167,6 +168,7 @@ class CommonNavigationBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, ref) {
+    String navigationLabel(NavigationItem item) => pageLabelTitle(item.label);
     if (viewMode == ViewMode.mobile) {
       return NavigationBarTheme(
         data: _NavigationBarDefaultsM3(context),
@@ -175,7 +177,7 @@ class CommonNavigationBar extends ConsumerWidget {
               .map(
                 (e) => NavigationDestination(
                   icon: e.icon,
-                  label: Intl.message(e.label.name),
+                  label: navigationLabel(e),
                 ),
               )
               .toList(),
@@ -252,7 +254,7 @@ class CommonNavigationBar extends ConsumerWidget {
                           (e) => NavigationRailDestination(
                             icon: e.icon,
                             label: Text(
-                              Intl.message(e.label.name),
+                              navigationLabel(e),
                             ),
                           ),
                         )
@@ -316,14 +318,15 @@ class _NavigationBarDefaultsM3 extends NavigationBarThemeData {
 
   @override
   WidgetStateProperty<IconThemeData?>? get iconTheme =>
-      WidgetStateProperty.resolveWith((Set<WidgetState> states) => IconThemeData(
-            size: 24.0,
-            color: states.contains(WidgetState.disabled)
-                ? _colors.onSurfaceVariant.opacity38
-                : states.contains(WidgetState.selected)
-                    ? _colors.onSecondaryContainer
-                    : _colors.onSurfaceVariant,
-          ));
+      WidgetStateProperty.resolveWith(
+          (Set<WidgetState> states) => IconThemeData(
+                size: 24.0,
+                color: states.contains(WidgetState.disabled)
+                    ? _colors.onSurfaceVariant.opacity38
+                    : states.contains(WidgetState.selected)
+                        ? _colors.onSecondaryContainer
+                        : _colors.onSurfaceVariant,
+              ));
 
   @override
   Color? get indicatorColor => _colors.secondaryContainer;
@@ -333,8 +336,8 @@ class _NavigationBarDefaultsM3 extends NavigationBarThemeData {
 
   @override
   WidgetStateProperty<TextStyle?>? get labelTextStyle =>
-      WidgetStateProperty.resolveWith((Set<WidgetState> states) =>
-          _textTheme.labelMedium!.apply(
+      WidgetStateProperty.resolveWith(
+          (Set<WidgetState> states) => _textTheme.labelMedium!.apply(
               overflow: TextOverflow.ellipsis,
               color: states.contains(WidgetState.disabled)
                   ? _colors.onSurfaceVariant.opacity38

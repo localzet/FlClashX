@@ -9,12 +9,13 @@ import com.follow.clashx.plugins.AppPlugin
 import com.follow.clashx.plugins.ServicePlugin
 import com.follow.clashx.plugins.TilePlugin
 import com.follow.clashx.plugins.VpnPlugin
-import io.flutter.embedding.android.FlutterActivity
+import com.follow.clashx.plugins.UserNetPlugin
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Apply app theme before creating the activity to fix splash screen theme
         applyAppTheme()
@@ -45,7 +46,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        
+
         // Platform Channel for getting Android ID
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.follow.clashx/device_id")
             .setMethodCallHandler { call, result ->
@@ -68,6 +69,7 @@ class MainActivity : FlutterActivity() {
         flutterEngine.plugins.add(ServicePlugin)
         flutterEngine.plugins.add(TilePlugin())
         flutterEngine.plugins.add(VpnPlugin)
+        flutterEngine.plugins.add(UserNetPlugin)
         GlobalState.flutterEngine = flutterEngine
         
         // Sync VPN status when app opens - this ensures UI reflects actual VPN state

@@ -38,6 +38,13 @@ class Navigation {
             : [],
       ),
       const NavigationItem(
+        icon: Icon(Icons.person),
+        label: PageLabel.account,
+        view: AccountView(
+          key: GlobalObjectKey(PageLabel.account),
+        ),
+      ),
+      const NavigationItem(
         icon: Icon(Icons.folder),
         label: PageLabel.profiles,
         view: ProfilesView(

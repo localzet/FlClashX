@@ -7,6 +7,9 @@ import 'package:archive/archive.dart';
 import 'package:flclashx/clash/clash.dart';
 import 'package:flclashx/common/archive.dart';
 import 'package:flclashx/services/subscription_notification_service.dart';
+import 'package:flclashx/services/usernet_fabric_coordinator.dart';
+import 'package:flclashx/services/usernet_account.dart';
+import 'package:flclashx/services/usernet_transport.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flclashx/plugins/app.dart';
 import 'package:flclashx/providers/providers.dart';
@@ -148,6 +151,7 @@ class AppController {
       await globalState.handleStart([
         updateRunTime,
         updateTraffic,
+        updateUserNetPath,
       ]);
       final currentLastModified =
           await _ref.read(currentProfileProvider)?.profileLastModified;
@@ -162,12 +166,78 @@ class AppController {
       applyProfileDebounce();
     } else {
       await globalState.handleStop();
+      await userNetFabricCoordinator.stop();
       clashCore.resetTraffic();
       _ref.read(trafficsProvider.notifier).clear();
       _ref.read(totalTrafficProvider.notifier).value = Traffic();
       _ref.read(runTimeProvider.notifier).value = null;
       addCheckIpNumDebounce();
     }
+  }
+
+  Future<void> updateUserNetPath() async {
+    // A periodic callback can already be queued while handleStop tears the
+    // core down. Never let that stale callback bring the carrier back up.
+    if (!_ref.read(runTimeProvider.notifier).isStart) return;
+    final profile = globalState.config.currentProfile;
+    if (profile == null || !isUserNetSubscription(profile.url)) return;
+    final configMap = await globalState.getProfileConfig(profile.id);
+    addDefaultUserNetMetadata(configMap, profile.url);
+    final config = UserNetTransportConfig.fromJson(configMap['usernet']);
+    final wasActive = userNetFabricCoordinator.fabricActive;
+    final isActive = await userNetFabricCoordinator.ensure(
+      config,
+      directProbe: _probeUserNetDirectPath,
+    );
+    if (!_ref.read(runTimeProvider.notifier).isStart) {
+      await userNetFabricCoordinator.stop();
+      return;
+    }
+    if (wasActive != isActive) {
+      await applyProfile(silence: true);
+    }
+  }
+
+  Future<bool> _probeUserNetDirectPath() async {
+    const testUrl = 'https://api.userlay.com/app/v1/plans';
+    final candidates = <String>[];
+    if (userNetFabricCoordinator.fabricActive) {
+      candidates.add(userNetDirectProbeProxyName);
+    } else {
+      final groups = getCurrentGroups();
+      for (final group in groups) {
+        final selected = group.getCurrentSelectedName(
+          getSelectedProxyName(group.name) ?? '',
+        );
+        final proxy =
+            group.all.where((item) => item.name == selected).firstOrNull;
+        if (proxy != null &&
+            GroupTypeExtension.getGroupType(proxy.type) == null &&
+            !UsedProxyExtension.valueList.contains(proxy.name) &&
+            proxy.name != userNetCarrierProxyName) {
+          candidates.add(proxy.name);
+        }
+      }
+      for (final group in groups) {
+        for (final proxy in group.all) {
+          if (GroupTypeExtension.getGroupType(proxy.type) == null &&
+              !UsedProxyExtension.valueList.contains(proxy.name) &&
+              proxy.name != userNetCarrierProxyName) {
+            candidates.add(proxy.name);
+          }
+        }
+      }
+    }
+
+    for (final proxyName in candidates.toSet().take(3)) {
+      try {
+        final delay = await clashCore.getDelay(testUrl, proxyName);
+        if ((delay.value ?? -1) > 0) return true;
+      } catch (error) {
+        commonPrint.log('UserNet direct probe failed for $proxyName: $error');
+      }
+    }
+    return false;
   }
 
   void updateRunTime() {
@@ -1107,8 +1177,14 @@ class AppController {
 
   Future<void> autoCheckUpdate() async {
     if (!_ref.read(appSettingProvider).autoCheckUpdate) return;
-    final res = await request.checkForUpdate();
-    checkUpdateResultHandle(data: res);
+    try {
+      final res = await request.checkForUpdate();
+      await checkUpdateResultHandle(data: res);
+    } catch (error) {
+      // The release endpoint may be unreachable on a censored network.
+      // Update checks must never interfere with VPN startup.
+      commonPrint.log('UserNet update check unavailable: $error');
+    }
   }
 
   Future<void> checkUpdateResultHandle({
@@ -1145,9 +1221,10 @@ class AppController {
       if (res != true) {
         return;
       }
-      unawaited(launchUrl(
-        Uri.parse("https://github.com/$repository/releases/latest"),
-      ));
+      final downloadUrl = Uri.tryParse(data['download_url']?.toString() ?? '');
+      if (downloadUrl != null && downloadUrl.scheme == 'https') {
+        unawaited(launchUrl(downloadUrl, mode: LaunchMode.externalApplication));
+      }
     } else if (handleError) {
       globalState.showMessage(
         title: appLocalizations.checkUpdate,
@@ -1264,6 +1341,16 @@ class AppController {
           return;
         }
         addProfileFormURL(url);
+      },
+      appLinkCallBack: (uri) {
+        if (uri.scheme != 'usernet' || uri.host != 'payment') return;
+        final purchaseId = uri.queryParameters['purchaseId']?.trim() ?? '';
+        if (purchaseId.isEmpty) return;
+        unawaited(userNetAccountService.rememberPendingPurchase(
+          purchaseId,
+          notify: true,
+        ));
+        toPage(PageLabel.account);
       },
     );
   }

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.follow.clashx.plugins.AppPlugin
 import com.follow.clashx.plugins.TilePlugin
+import com.follow.clashx.plugins.UserNetPlugin
 import com.follow.clashx.plugins.VpnPlugin
 import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
@@ -186,6 +187,7 @@ object GlobalState {
             Log.d("GlobalState", "Registering plugins")
             io.flutter.plugins.GeneratedPluginRegistrant.registerWith(serviceEngine!!)
             serviceEngine?.plugins?.add(VpnPlugin)
+            serviceEngine?.plugins?.add(UserNetPlugin)
             serviceEngine?.plugins?.add(AppPlugin())
             serviceEngine?.plugins?.add(TilePlugin())
             val vpnService = DartExecutor.DartEntrypoint(

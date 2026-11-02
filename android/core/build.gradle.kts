@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.follow.clashx.core"
     compileSdk = 36
-    ndkVersion = "28.0.13004108"
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         minSdk = 23
@@ -71,5 +71,15 @@ val copyNativeLibs by tasks.register<Copy>("copyNativeLibs") {
 afterEvaluate {
     tasks.named("preBuild") {
         dependsOn(copyNativeLibs)
+    }
+
+    // CMake configuration may run before preBuild. In that case it caches the
+    // fallback build without LIBCLASH and the packaged libcore.so contains no
+    // JNI entry points. Make the native configure/build tasks wait until the
+    // generated libclash artifacts are in place.
+    tasks.configureEach {
+        if (name.startsWith("configureCMake") || name.startsWith("buildCMake")) {
+            dependsOn(copyNativeLibs)
+        }
     }
 }

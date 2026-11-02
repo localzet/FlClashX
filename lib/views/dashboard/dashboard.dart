@@ -1,9 +1,14 @@
+// SPDX-FileCopyrightText: 2026 Ivan Zorin <creator@localzet.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Source: https://github.com/localzet/FlClashX
+
 import 'dart:math';
 
 import 'package:defer_pointer/defer_pointer.dart';
 import 'package:flclashx/common/common.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flclashx/providers/providers.dart';
+import 'package:flclashx/widgets/usernet_connection_panel.dart';
 import 'package:flclashx/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -239,6 +244,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> with PageMixin {
             ),
           ),
         ),
+        const UserNetConnectionPanel(compact: true),
         // Start/Stop button at the bottom
         const StartButton(),
       ],

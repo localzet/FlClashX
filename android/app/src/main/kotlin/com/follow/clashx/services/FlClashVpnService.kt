@@ -98,7 +98,7 @@ class FlClashXVpnService : VpnService(), BaseServiceInterface {
             val exclude = options.excludePackage.orEmpty()
             when {
                 include.isNotEmpty() -> {
-                    (include + packageName).distinct().forEach { pkg ->
+                    (include - packageName).distinct().forEach { pkg ->
                         try {
                             addAllowedApplication(pkg)
                         } catch (_: Exception) {
@@ -107,7 +107,7 @@ class FlClashXVpnService : VpnService(), BaseServiceInterface {
                     }
                 }
                 exclude.isNotEmpty() -> {
-                    (exclude - packageName).forEach { pkg ->
+                    (exclude + packageName).distinct().forEach { pkg ->
                         try {
                             addDisallowedApplication(pkg)
                         } catch (_: Exception) {
@@ -119,7 +119,7 @@ class FlClashXVpnService : VpnService(), BaseServiceInterface {
                     if (accessControl.enable) {
                         when (accessControl.mode) {
                             AccessControlMode.acceptSelected -> {
-                                (accessControl.acceptList + packageName).forEach {
+                                (accessControl.acceptList - packageName).forEach {
                                     try {
                                         addAllowedApplication(it)
                                     } catch (_: Exception) {
@@ -129,7 +129,7 @@ class FlClashXVpnService : VpnService(), BaseServiceInterface {
                             }
 
                             AccessControlMode.rejectSelected -> {
-                                (accessControl.rejectList - packageName).forEach {
+                                (accessControl.rejectList + packageName).distinct().forEach {
                                     try {
                                         addDisallowedApplication(it)
                                     } catch (_: Exception) {
@@ -138,10 +138,12 @@ class FlClashXVpnService : VpnService(), BaseServiceInterface {
                                 }
                             }
                         }
+                    } else {
+                        addDisallowedApplication(packageName)
                     }
                 }
             }
-            setSession("FlClashX")
+            setSession("UserNet")
             setBlocking(false)
             if (Build.VERSION.SDK_INT >= 29) {
                 setMetered(false)

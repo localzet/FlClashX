@@ -456,6 +456,7 @@ enum GeodataLoader {
 
 enum PageLabel {
   dashboard,
+  account,
   proxies,
   profiles,
   tools,

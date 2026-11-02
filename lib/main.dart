@@ -115,9 +115,7 @@ Future<void> _service(List<String> flags) async {
               ),
             );
             final handler = clashLibHandler;
-            if (handler != null) {
-              unawaited(handler.invokeAction(actionJson));
-            }
+            unawaited(handler.invokeAction(actionJson));
           } catch (e) {
             debugPrint("onChangeMode: live updateConfig error: $e");
           }
@@ -309,8 +307,8 @@ Future<void> _service(List<String> flags) async {
   vpn?.addListener(
     _VpnListenerWithService(
       onDnsChanged: (dns) {
-        commonPrint.log("handle dns $dns");
         clashLibHandler.updateDns(dns);
+        clashCore.resetConnections();
       },
     ),
   );

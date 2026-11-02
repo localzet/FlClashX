@@ -1,4 +1,5 @@
 export 'about.dart';
+export 'account.dart';
 export 'access.dart';
 export 'application_setting.dart';
 export 'backup_and_recovery.dart';

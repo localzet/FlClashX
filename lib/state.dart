@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Ivan Zorin <creator@localzet.com>
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Source: https://github.com/localzet/FlClashX
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' show Pointer;
@@ -11,6 +15,9 @@ import 'package:flclashx/common/theme.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flclashx/l10n/l10n.dart';
 import 'package:flclashx/plugins/service.dart';
+import 'package:flclashx/services/usernet_fabric_coordinator.dart';
+import 'package:flclashx/services/usernet_preferences.dart';
+import 'package:flclashx/services/usernet_transport.dart';
 import 'package:flclashx/widgets/dialog.dart';
 import 'package:flclashx/widgets/scaffold.dart';
 import 'package:flutter/material.dart';
@@ -27,7 +34,6 @@ import 'models/models.dart';
 typedef UpdateTasks = List<FutureOr Function()>;
 
 class GlobalState {
-
   factory GlobalState() {
     _instance ??= GlobalState._internal();
     return _instance!;
@@ -87,7 +93,11 @@ class GlobalState {
     final coreVersionEnv = const String.fromEnvironment("CORE_VERSION");
     coreVersion =
         coreVersionEnv.isEmpty ? kCoreVersionFromSource : coreVersionEnv;
-    isPre = const String.fromEnvironment("APP_ENV") != 'stable';
+    isPre = const String.fromEnvironment(
+          "APP_ENV",
+          defaultValue: "stable",
+        ) !=
+        'stable';
     appState = AppState(
       version: version,
       viewSize: Size.zero,
@@ -170,9 +180,10 @@ class GlobalState {
     required InlineSpan message,
     String? confirmText,
     bool cancelable = true,
-  }) async => showCommonDialog<bool>(
-      child: Builder(
-        builder: (context) => CommonDialog(
+  }) async =>
+      showCommonDialog<bool>(
+        child: Builder(
+          builder: (context) => CommonDialog(
             title: title ?? appLocalizations.tip,
             actions: [
               if (cancelable)
@@ -205,8 +216,8 @@ class GlobalState {
               ),
             ),
           ),
-      ),
-    );
+        ),
+      );
 
   // Future<Map<String, dynamic>> getProfileMap(String id) async {
   //   final profilePath = await appPath.getProfilePath(id);
@@ -232,15 +243,16 @@ class GlobalState {
   Future<T?> showCommonDialog<T>({
     required Widget child,
     bool dismissible = true,
-  }) async => showModal<T>(
-      context: navigatorKey.currentState!.context,
-      configuration: FadeScaleTransitionConfiguration(
-        barrierColor: Colors.black38,
-        barrierDismissible: dismissible,
-      ),
-      builder: (_) => child,
-      filter: commonFilter,
-    );
+  }) async =>
+      showModal<T>(
+        context: navigatorKey.currentState!.context,
+        configuration: FadeScaleTransitionConfiguration(
+          barrierColor: Colors.black38,
+          barrierDismissible: dismissible,
+        ),
+        builder: (_) => child,
+        filter: commonFilter,
+      );
 
   Future<T?> safeRun<T>(
     FutureOr<T> Function() futureFunction, {
@@ -320,7 +332,8 @@ class GlobalState {
     return params;
   }
 
-  Future<ClashConfig> syncNetworkSettingsFromProvider(ClashConfig patchConfig) async {
+  Future<ClashConfig> syncNetworkSettingsFromProvider(
+      ClashConfig patchConfig) async {
     if (config.appSetting.overrideNetworkSettings) {
       return patchConfig; // User wants to override, keep current settings
     }
@@ -336,16 +349,21 @@ class GlobalState {
       final rawConfig = await handleEvaluate(configMap);
 
       final providerIpv6 = rawConfig['ipv6'] as bool? ?? patchConfig.ipv6;
-      final providerAllowLan = rawConfig['allow-lan'] as bool? ?? patchConfig.allowLan;
-      final providerMixedPort = rawConfig['mixed-port'] as int? ?? patchConfig.mixedPort;
-      final providerFindProcessModeStr = rawConfig['find-process-mode'] as String?;
-      final providerFindProcessMode = providerFindProcessModeStr != null 
+      final providerAllowLan =
+          rawConfig['allow-lan'] as bool? ?? patchConfig.allowLan;
+      final providerMixedPort =
+          rawConfig['mixed-port'] as int? ?? patchConfig.mixedPort;
+      final providerFindProcessModeStr =
+          rawConfig['find-process-mode'] as String?;
+      final providerFindProcessMode = providerFindProcessModeStr != null
           ? FindProcessMode.values.firstWhere(
-              (e) => e.name.toLowerCase() == providerFindProcessModeStr.toLowerCase(),
+              (e) =>
+                  e.name.toLowerCase() ==
+                  providerFindProcessModeStr.toLowerCase(),
               orElse: () => patchConfig.findProcessMode,
             )
           : patchConfig.findProcessMode;
-      
+
       final providerTunStackStr = rawConfig['tun']?['stack'] as String?;
       final providerTunStack = providerTunStackStr != null
           ? TunStack.values.firstWhere(
@@ -354,12 +372,15 @@ class GlobalState {
             )
           : patchConfig.tun.stack;
 
-      return patchConfig.copyWith(
-        ipv6: providerIpv6,
-        allowLan: providerAllowLan,
-        mixedPort: providerMixedPort,
-        findProcessMode: providerFindProcessMode,
-      ).copyWith.tun(stack: providerTunStack);
+      return patchConfig
+          .copyWith(
+            ipv6: providerIpv6,
+            allowLan: providerAllowLan,
+            mixedPort: providerMixedPort,
+            findProcessMode: providerFindProcessMode,
+          )
+          .copyWith
+          .tun(stack: providerTunStack);
     } catch (e) {
       commonPrint.log("Error syncing network settings from provider: $e");
       return patchConfig;
@@ -376,7 +397,12 @@ class GlobalState {
     final profileId = profile.id;
     final configMap = await getProfileConfig(profileId);
     final rawConfig = await handleEvaluate(configMap);
-    
+    addDefaultUserNetMetadata(rawConfig, profile.url);
+    final userNetConfig = UserNetTransportConfig.fromJson(rawConfig['usernet']);
+    final fabricActive = await userNetFabricCoordinator.ensure(userNetConfig);
+    applyUserNetTransport(rawConfig, fabricActive: fabricActive,
+        modeOverride: userNetPreferences.mode);
+
     final realPatchConfig = patchConfig.copyWith(
       tun: patchConfig.tun.getRealTun(config.networkProps.routeMode),
     );
@@ -403,16 +429,18 @@ class GlobalState {
     // here — users who set external-controller in their profile mean it.
     final providerExternalController =
         (rawConfig["external-controller"] as String?)?.trim() ?? "";
-    final effectiveExternalControllerValue = providerExternalController.isNotEmpty
-        ? providerExternalController
-        : realPatchConfig.externalController.value;
+    final effectiveExternalControllerValue =
+        providerExternalController.isNotEmpty
+            ? providerExternalController
+            : realPatchConfig.externalController.value;
     rawConfig["external-controller"] = effectiveExternalControllerValue;
     effectiveExternalController.value = effectiveExternalControllerValue;
     if (rawConfig["external-ui"] == null || rawConfig["external-ui"] == "") {
       rawConfig["external-ui"] = "";
     }
     rawConfig["interface-name"] = "";
-    if (rawConfig["external-ui-url"] == null || rawConfig["external-ui-url"] == "") {
+    if (rawConfig["external-ui-url"] == null ||
+        rawConfig["external-ui-url"] == "") {
       rawConfig["external-ui-url"] = "";
     }
     // These follow the same overrideNetworkSettings gate as other fields:
@@ -423,7 +451,8 @@ class GlobalState {
     final profileTcpConcurrent = rawConfig["tcp-concurrent"] as bool?;
     final profileUnifiedDelay = rawConfig["unified-delay"] as bool?;
     final profileLogLevel = rawConfig["log-level"] as String?;
-    final profileKeepAlive = (rawConfig["keep-alive-interval"] as num?)?.toInt();
+    final profileKeepAlive =
+        (rawConfig["keep-alive-interval"] as num?)?.toInt();
     final isOverride = config.appSetting.overrideNetworkSettings;
     final effTcpConcurrent = isOverride
         ? realPatchConfig.tcpConcurrent
@@ -452,7 +481,7 @@ class GlobalState {
     rawConfig["redir-port"] = realPatchConfig.redirPort;
     rawConfig["tproxy-port"] = realPatchConfig.tproxyPort;
     rawConfig["mode"] = realPatchConfig.mode.name;
-    
+
     // Set network settings: use patchConfig if overriding, otherwise keep provider values
     if (config.appSetting.overrideNetworkSettings) {
       // User wants to override - use values from UI (always write)
@@ -484,20 +513,21 @@ class GlobalState {
     // that should not be overridable from the app side. No-op on other
     // platforms — desktop TUN gating is handled separately.
     if (Platform.isAndroid) {
-      final secureHeader =
-          profile.providerHeaders['flclashx-androidsecure']?.trim().toLowerCase();
+      final secureHeader = profile.providerHeaders['flclashx-androidsecure']
+          ?.trim()
+          .toLowerCase();
       if (secureHeader == 'true') {
         rawConfig["mixed-port"] = 0;
       }
     }
-    
+
     if (rawConfig["tun"] == null) {
       rawConfig["tun"] = {};
     }
     rawConfig["tun"]["enable"] = realPatchConfig.tun.enable;
     rawConfig["tun"]["device"] = realPatchConfig.tun.device;
     rawConfig["tun"]["dns-hijack"] = realPatchConfig.tun.dnsHijack;
-    
+
     // Set TUN stack
     if (config.appSetting.overrideNetworkSettings) {
       // User wants to override - use value from UI (always write)
@@ -509,7 +539,7 @@ class GlobalState {
         rawConfig["tun"]["stack"] = realPatchConfig.tun.stack.name;
       }
     }
-    
+
     rawConfig["tun"]["route-address"] = realPatchConfig.tun.routeAddress;
     rawConfig["tun"]["auto-route"] = realPatchConfig.tun.autoRoute;
     rawConfig["geodata-loader"] = realPatchConfig.geodataLoader.name;
@@ -559,23 +589,26 @@ class GlobalState {
     }
 
     rawConfig["profile"]["store-selected"] = false;
-    
+
     final mergedGeoXUrl = <String, dynamic>{};
     final patchGeoX = realPatchConfig.geoXUrl.toJson();
     final profileGeoX = rawConfig["geox-url"];
-    
+
     mergedGeoXUrl['geoip'] = patchGeoX['geoip'];
     mergedGeoXUrl['mmdb'] = patchGeoX['mmdb'];
     mergedGeoXUrl['asn'] = patchGeoX['asn'];
     mergedGeoXUrl['geosite'] = patchGeoX['geosite'];
-    
+
     if (profileGeoX != null && profileGeoX is Map) {
-      if (profileGeoX['geoip'] != null) mergedGeoXUrl['geoip'] = profileGeoX['geoip'];
-      if (profileGeoX['mmdb'] != null) mergedGeoXUrl['mmdb'] = profileGeoX['mmdb'];
+      if (profileGeoX['geoip'] != null)
+        mergedGeoXUrl['geoip'] = profileGeoX['geoip'];
+      if (profileGeoX['mmdb'] != null)
+        mergedGeoXUrl['mmdb'] = profileGeoX['mmdb'];
       if (profileGeoX['asn'] != null) mergedGeoXUrl['asn'] = profileGeoX['asn'];
-      if (profileGeoX['geosite'] != null) mergedGeoXUrl['geosite'] = profileGeoX['geosite'];
+      if (profileGeoX['geosite'] != null)
+        mergedGeoXUrl['geosite'] = profileGeoX['geosite'];
     }
-    
+
     rawConfig["geox-url"] = mergedGeoXUrl;
     rawConfig["global-ua"] = realPatchConfig.globalUa;
     if (rawConfig["hosts"] == null) {
@@ -660,7 +693,6 @@ class GlobalState {
 final globalState = GlobalState();
 
 class DetectionState {
-
   factory DetectionState() {
     _instance ??= DetectionState._internal();
     return _instance!;

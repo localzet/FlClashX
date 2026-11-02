@@ -28,53 +28,55 @@ class ToolsView extends ConsumerStatefulWidget {
 }
 
 class _ToolboxViewState extends ConsumerState<ToolsView> {
-  ListItem<dynamic> _buildNavigationMenuItem(NavigationItem navigationItem) => ListItem.open(
-      leading: navigationItem.icon,
-      title: Text(Intl.message(navigationItem.label.name)),
-      subtitle: navigationItem.description != null
-          ? Text(Intl.message(navigationItem.description!))
-          : null,
-      delegate: OpenDelegate(
-        title: Intl.message(navigationItem.label.name),
-        widget: navigationItem.view,
-      ),
-    );
+  ListItem<dynamic> _buildNavigationMenuItem(NavigationItem navigationItem) =>
+      ListItem.open(
+        leading: navigationItem.icon,
+        title: Text(Intl.message(navigationItem.label.name)),
+        subtitle: navigationItem.description != null
+            ? Text(Intl.message(navigationItem.description!))
+            : null,
+        delegate: OpenDelegate(
+          title: Intl.message(navigationItem.label.name),
+          widget: navigationItem.view,
+        ),
+      );
 
   Widget _buildNavigationMenu(List<NavigationItem> navigationItems) => Column(
-      children: [
-        for (final navigationItem in navigationItems) ...[
-          _buildNavigationMenuItem(navigationItem),
-          navigationItems.last != navigationItem
-              ? const Divider(
-                  height: 0,
-                )
-              : Container(),
-        ]
-      ],
-    );
+        children: [
+          for (final navigationItem in navigationItems) ...[
+            _buildNavigationMenuItem(navigationItem),
+            navigationItems.last != navigationItem
+                ? const Divider(
+                    height: 0,
+                  )
+                : Container(),
+          ]
+        ],
+      );
 
-  List<Widget> _getOtherList(BuildContext context, bool enableDeveloperMode) => generateSection(
-      title: AppLocalizations.of(context).other,
-      items: [
-        const _DisclaimerItem(),
-        if (enableDeveloperMode) const _DeveloperItem(),
-        const _InfoItem(),
-      ],
-    );
+  List<Widget> _getOtherList(BuildContext context, bool enableDeveloperMode) =>
+      generateSection(
+        title: AppLocalizations.of(context).other,
+        items: [
+          const _DisclaimerItem(),
+          if (enableDeveloperMode) const _DeveloperItem(),
+          const _InfoItem(),
+        ],
+      );
 
   List<Widget> _getSettingList(BuildContext context) => generateSection(
-      title: AppLocalizations.of(context).settings,
-      items: [
-        const _LocaleItem(),
-        const _ThemeItem(),
-        const _BackupItem(),
-        if (system.isDesktop) const _HotkeyItem(),
-        if (Platform.isWindows) const _LoopbackItem(),
-        if (Platform.isAndroid) const _AccessItem(),
-        const _ConfigItem(),
-        const _SettingItem(),
-      ],
-    );
+        title: AppLocalizations.of(context).settings,
+        items: [
+          const _LocaleItem(),
+          const _ThemeItem(),
+          const _BackupItem(),
+          if (system.isDesktop) const _HotkeyItem(),
+          if (Platform.isWindows) const _LoopbackItem(),
+          if (Platform.isAndroid) const _AccessItem(),
+          const _ConfigItem(),
+          const _SettingItem(),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
