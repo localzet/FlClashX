@@ -31,10 +31,11 @@ Future<String?> decodeQrImage(Uint8List bytes) async {
       final offset = i * 4;
       // Прозрачные пиксели накладываем на белый фон, иначе PNG без
       // подложки превращается в чёрный прямоугольник.
-      final white = 255 - rgba.getUint8(offset + 3);
-      final red = rgba.getUint8(offset) + white;
-      final green = rgba.getUint8(offset + 1) + white;
-      final blue = rgba.getUint8(offset + 2) + white;
+      final alpha = rgba.getUint8(offset + 3);
+      final white = 255 * (255 - alpha);
+      final red = (rgba.getUint8(offset) * alpha + white) ~/ 255;
+      final green = (rgba.getUint8(offset + 1) * alpha + white) ~/ 255;
+      final blue = (rgba.getUint8(offset + 2) * alpha + white) ~/ 255;
       pixels[i] = (red << 16) | (green << 8) | blue;
     }
 
