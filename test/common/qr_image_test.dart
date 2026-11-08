@@ -47,7 +47,9 @@ Future<Uint8List> renderQr(String text, {bool transparent = false}) async {
 }
 
 void main() {
-  testWidgets('читает ссылку подписки из PNG', (tester) async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('читает ссылку подписки из PNG', () async {
     const url = 'https://example.org/subscription?id=12345';
     final image = await renderQr(url);
 
@@ -55,12 +57,12 @@ void main() {
     expect(profileUrlFromQrCodes([await decodeQrImage(image)]), url);
   });
 
-  testWidgets('читает QR с прозрачным фоном', (tester) async {
+  test('читает QR с прозрачным фоном', () async {
     const url = 'https://example.org/subscription';
     expect(await decodeQrImage(await renderQr(url, transparent: true)), url);
   });
 
-  testWidgets('отклоняет изображение без QR', (tester) async {
+  test('отклоняет изображение без QR', () async {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     canvas.drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
@@ -78,12 +80,12 @@ void main() {
     }
   });
 
-  testWidgets('не выбрасывает ошибку на повреждённом файле', (tester) async {
+  test('не выбрасывает ошибку на повреждённом файле', () async {
     expect(await decodeQrImage(Uint8List.fromList([1, 2, 3])), isNull);
     expect(await decodeQrImage(Uint8List(0)), isNull);
   });
 
-  testWidgets('отклоняет файл больше установленного лимита', (tester) async {
+  test('отклоняет файл больше установленного лимита', () async {
     expect(await decodeQrImage(Uint8List(20 * 1024 * 1024 + 1)), isNull);
   });
 }
