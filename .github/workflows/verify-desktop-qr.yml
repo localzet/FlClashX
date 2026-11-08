@@ -1,0 +1,25 @@
+name: QR desktop regression
+
+on:
+  push:
+    branches: [ci/desktop-qr-verify-2]
+
+permissions:
+  contents: read
+
+jobs:
+  qr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: yq -i '.hooks.user_defines.setup.build_assets = false' pubspec.yaml
+      - run: dart format --output=none --set-exit-if-changed lib/common/qr_image.dart lib/common/picker.dart test/common/qr_image_test.dart
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test --no-pub --timeout=60s --reporter=expanded test/common/qr_image_test.dart
