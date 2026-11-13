@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fl_clash/common/constant.dart';
 import 'package:fl_clash/common/system.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/models/common.dart';
 import 'package:fl_clash/models/core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -39,6 +40,15 @@ class CoreService extends CoreHandlerInterface {
         directLauncher: directLauncher,
         helperLauncher: HelperLauncher(helperClient),
         helperReady: () => helperClient.readiness(),
+        onVerificationFailure: (error) {
+          final log = Log.app(
+            'Helper could not verify the Core: ${error.message}. '
+            'Reinstall FlClashX to restore TUN support.',
+          ).copyWith(logLevel: LogLevel.error);
+          coreEventManager.sendEvent(
+            CoreEvent(type: CoreEventType.log, data: log.toJson()),
+          );
+        },
       ),
       verifyPeerPid: system.isWindows,
     );

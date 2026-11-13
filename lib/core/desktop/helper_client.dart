@@ -490,8 +490,13 @@ const _preSpawnHelperErrors = {'coreVerificationFailed', 'processLaunchFailed'};
 final class FallbackCoreLauncher implements CoreProcessLauncher {
   final CoreProcessLauncher primary;
   final CoreProcessLauncher fallback;
+  final void Function(HelperException)? onVerificationFailure;
 
-  const FallbackCoreLauncher({required this.primary, required this.fallback});
+  const FallbackCoreLauncher({
+    required this.primary,
+    required this.fallback,
+    this.onVerificationFailure,
+  });
 
   @override
   Future<CoreProcessLease> start({
@@ -502,6 +507,9 @@ final class FallbackCoreLauncher implements CoreProcessLauncher {
       return await primary.start(sessionId: sessionId, address: address);
     } on HelperException catch (error) {
       if (!_preSpawnHelperErrors.contains(error.code)) rethrow;
+      if (error.code == 'coreVerificationFailed') {
+        onVerificationFailure?.call(error);
+      }
       commonPrint.log(
         'Helper could not start the Core ($error); '
         'falling back to direct Core',
@@ -519,12 +527,14 @@ final class HelperLauncherResolver implements DesktopCoreLauncherResolver {
   final CoreProcessLauncher directLauncher;
   final CoreProcessLauncher helperLauncher;
   final HelperReadinessProbe helperReady;
+  final void Function(HelperException)? onVerificationFailure;
 
   const HelperLauncherResolver({
     required this.hasHelper,
     required this.directLauncher,
     required this.helperLauncher,
     required this.helperReady,
+    this.onVerificationFailure,
   });
 
   @override
@@ -535,6 +545,7 @@ final class HelperLauncherResolver implements DesktopCoreLauncherResolver {
       return FallbackCoreLauncher(
         primary: helperLauncher,
         fallback: directLauncher,
+        onVerificationFailure: onVerificationFailure,
       );
     }
     return directLauncher;

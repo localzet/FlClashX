@@ -730,10 +730,15 @@ void main() {
             message: 'Core executable SHA256 mismatch',
           );
         final direct = FakeLauncher(owner: CoreProcessOwner.direct, pid: 3);
-        final launcher = FallbackCoreLauncher(
-          primary: helper,
-          fallback: direct,
+        final failures = <HelperException>[];
+        final resolver = HelperLauncherResolver(
+          hasHelper: true,
+          directLauncher: direct,
+          helperLauncher: helper,
+          helperReady: () async => HelperReadiness.ready,
+          onVerificationFailure: failures.add,
         );
+        final launcher = await resolver.resolve();
 
         final lease = await launcher.start(
           sessionId: _sessionId,
@@ -744,6 +749,7 @@ void main() {
         expect(lease.owner, CoreProcessOwner.direct);
         expect(helper.startCount, 1);
         expect(direct.startCount, 1);
+        expect(failures, [same(helper.startError)]);
       },
     );
 
@@ -756,9 +762,11 @@ void main() {
             message: 'unable to spawn the Core',
           );
         final direct = FakeLauncher(owner: CoreProcessOwner.direct, pid: 3);
+        final failures = <HelperException>[];
         final launcher = FallbackCoreLauncher(
           primary: helper,
           fallback: direct,
+          onVerificationFailure: failures.add,
         );
 
         final lease = await launcher.start(
@@ -770,6 +778,7 @@ void main() {
         expect(lease.owner, CoreProcessOwner.direct);
         expect(helper.startCount, 1);
         expect(direct.startCount, 1);
+        expect(failures, isEmpty);
       },
     );
 
