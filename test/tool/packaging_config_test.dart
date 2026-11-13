@@ -62,9 +62,8 @@ void main() {
 
   test('AUR packages keep the Core bytes the Helper was built against', () {
     for (final package in ['flclashx-bin', 'flclashx-git']) {
-      final pkgbuild = File(
-        '.github/aur/$package/PKGBUILD',
-      ).readAsStringSync();
+      final path = '.github/aur/$package/PKGBUILD';
+      final pkgbuild = File(path).readAsStringSync();
       final options = RegExp(
         r'^options=\(([^)]*)\)',
         multiLine: true,
