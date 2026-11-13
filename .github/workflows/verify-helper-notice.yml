@@ -1,0 +1,22 @@
+name: Verify Helper verification notice
+on:
+  push:
+    branches: [ci/helper-verification-notice]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: yq -i '.hooks.user_defines.setup.build_assets = false' pubspec.yaml
+      - run: dart format --output=none --set-exit-if-changed lib/core/desktop/helper_client.dart lib/core/service.dart test/core/desktop/helper_client_test.dart
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test --no-pub --timeout=60s --reporter=expanded test/core/desktop/helper_client_test.dart
