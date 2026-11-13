@@ -59,4 +59,23 @@ void main() {
     expect(macros, contains('%global debug_package %{nil}'));
     expect(macros, contains('%global __os_install_post %{nil}'));
   });
+
+  test('AUR packages keep the Core bytes the Helper was built against', () {
+    for (final package in ['flclashx-bin', 'flclashx-git']) {
+      final pkgbuild = File(
+        '.github/aur/$package/PKGBUILD',
+      ).readAsStringSync();
+      final options = RegExp(
+        r'^options=\(([^)]*)\)',
+        multiLine: true,
+      ).firstMatch(pkgbuild)?.group(1);
+
+      expect(options, isNotNull, reason: package);
+      expect(
+        options!.split(RegExp(r'\s+')),
+        containsAll(["'!strip'", "'!debug'"]),
+        reason: package,
+      );
+    }
+  });
 }
