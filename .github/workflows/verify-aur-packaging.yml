@@ -1,0 +1,33 @@
+name: Verify AUR packaging
+on:
+  push:
+    branches: [ci/aur-preserve-binaries]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check PKGBUILD syntax and effective options
+        shell: bash
+        run: |
+          for package in flclashx-bin flclashx-git; do
+            file=".github/aur/$package/PKGBUILD"
+            bash -n "$file"
+            (
+              source "$file"
+              [[ " ${options[*]} " == *" !strip "* ]]
+              [[ " ${options[*]} " == *" !debug "* ]]
+            )
+          done
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: yq -i '.hooks.user_defines.setup.build_assets = false' pubspec.yaml
+      - run: dart format --output=none --set-exit-if-changed test/tool/packaging_config_test.dart
+      - run: flutter test --no-pub --timeout=60s --reporter=expanded test/tool/packaging_config_test.dart
